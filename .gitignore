@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.pkl
+~/.rce_library.pkl
+.rce_library.pkl
+*.egg-info/
+.venv/
+venv/
+.modal/
