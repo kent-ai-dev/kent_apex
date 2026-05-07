@@ -1,0 +1,30 @@
+the cat sat on the mat
+the dog sat on the rug
+the cat ran on the path
+the dog ran on the road
+the cat ate the fish
+the dog ate the bone
+the bird flew over the tree
+the bird sang in the tree
+the sun rose over the hill
+the moon rose over the sea
+the cat sat on the mat
+the dog sat on the rug
+the fish swam in the sea
+the bird flew over the tree
+hello world
+hello there
+hello friend
+how are you
+how is the cat
+how is the dog
+the cat is happy
+the dog is happy
+the bird is happy
+i am happy
+you are happy
+we are happy
+the cat sat on the mat
+the dog sat on the rug
+the cat ran on the path
+the dog ran on the road
