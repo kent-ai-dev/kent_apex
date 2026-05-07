@@ -24,12 +24,31 @@ HELDOUT_BUDGET_BYTES = 100_000   # 100KB held-out (V1 spec)
 OOD_BUDGET_BYTES = 20_000
 
 
+def _validate_or_fail(name: str, config: str | None):
+    from validate_dataset import validate
+    rep = validate(name, config=config, split="train", sample=100)
+    print(f"  validator: {rep.summary}")
+    if rep.verdict == "FAIL":
+        for c in rep.checks:
+            mark = "✓" if c["score"] == c["max"] else ("~" if c["score"] > 0 else "✗")
+            print(f"    {mark} {c['check']}: {c.get('note', '')}")
+        raise SystemExit(
+            f"FAIL: {name} ({config}) failed pre-ingestion validation. "
+            f"Pick a different dataset and validate it before retrying."
+        )
+    if rep.verdict == "WARN":
+        print(f"  WARN: {rep.summary} — proceeding but flagging in LOG.md")
+
+
 def fetch_wikitext():
     from datasets import load_dataset
 
     if WIKITEXT_TRAIN.exists() and WIKITEXT_HELDOUT.exists():
         print("wikitext: already present")
         return
+
+    print("validating Salesforce/wikitext wikitext-2-raw-v1...")
+    _validate_or_fail("Salesforce/wikitext", "wikitext-2-raw-v1")
 
     print("downloading Salesforce/wikitext wikitext-2-raw-v1...")
     ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1")
