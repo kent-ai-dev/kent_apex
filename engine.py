@@ -65,27 +65,16 @@ class NGramPrimitive(Program):
         self.fitted = True
 
     def predict(self, ctx: bytes) -> Counter:
-        if not self.fitted or self.n == 0:
+        if not self.fitted or self.n == 0 or len(ctx) < self.n:
             return Counter({b: 1.0 for b in range(256)})
-        # try the full context, then back off to shorter contexts
-        for k in range(self.n, 0, -1):
-            if len(ctx) < k:
-                continue
-            key = ctx[-k:]
-            if k == self.n and key in self.table and self.table[key]:
-                c = self.table[key]
-                # very light smoothing so confident predictions stay confident
-                return Counter({b: c.get(b, 0) + 0.01 for b in range(256)})
-        # backoff: aggregate across all contexts ending in last byte
-        if ctx:
-            last = ctx[-1]
-            agg = Counter()
-            for key, c in self.table.items():
-                if key and key[-1] == last:
-                    for b, v in c.items():
-                        agg[b] += v
-            if agg:
-                return Counter({b: agg.get(b, 0) + 0.05 for b in range(256)})
+        # Look up the full n-context. Backoff to shorter contexts is handled
+        # by lower-order NGramPrimitives in the same library (each n is its own
+        # primitive); doing it inside one primitive devolves into an O(table)
+        # scan per byte, which made eval pathologically slow.
+        key = ctx[-self.n:]
+        c = self.table.get(key)
+        if c:
+            return Counter({b: c.get(b, 0) + 0.01 for b in range(256)})
         return Counter({b: 1.0 for b in range(256)})
 
 

@@ -1,7 +1,18 @@
 {
-  "version": 1,
+  "version": 3,
   "stage": "DESIGN",
-  "iteration": 0,
-  "last_gate": "in_progress",
-  "started_at": "2026-05-06"
+  "iteration": 2,
+  "last_gate": "pass",
+  "started_at": "2026-05-06",
+  "tokenization": "word",
+  "tokenization_chosen_at": "2026-05-07",
+  "tokenization_results": {
+    "bytes": 2.6744,
+    "bpe4096": 2.8107,
+    "word": 2.2491
+  },
+  "v1_trained_baseline_bpb": 2.6209,
+  "engine_optimizations": [
+    "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan; lower-order n-grams in same library handle backoff via their own predicts"
+  ]
 }
