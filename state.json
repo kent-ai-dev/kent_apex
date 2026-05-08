@@ -1,7 +1,7 @@
 {
-  "version": 3,
+  "version": 4,
   "stage": "DESIGN",
-  "iteration": 2,
+  "iteration": 3,
   "last_gate": "pass",
   "started_at": "2026-05-06",
   "tokenization": "word",
@@ -12,7 +12,16 @@
     "word": 2.2491
   },
   "v1_trained_baseline_bpb": 2.6209,
+  "v3_trained_bpb": 2.3735,
   "engine_optimizations": [
-    "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan; lower-order n-grams in same library handle backoff via their own predicts"
+    "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan",
+    "2026-05-07: V3 added KneserNeyNGram(3,4,5) and SkipGramPredictor(2x3, 3x3); BPB 9.4% better than V1 trained"
+  ],
+  "open_findings": [
+    "V3 broke V1's refusal-rate metric (KN's continuation base ≈ unigram freq, not uniform). Address at V10."
+  ],
+  "deferred": [
+    "SuffixArrayPredictor (V3 spec); LZWPredictor (V3 spec) — added if KN/skip plateau",
+    "Engine vocab refactor for word tokenization (V2 winner) — defer to V6 when scale matters"
   ]
 }

@@ -91,6 +91,107 @@ class RepeatPrimitive(Program):
         return c
 
 
+class KneserNeyNGram(Program):
+    """N-gram predictor with Kneser-Ney smoothing. Stronger than add-k:
+    instead of "how often did this byte follow this context," uses
+    "in how many distinct contexts has this byte appeared as a continuation."
+    Backs off recursively through lower orders.
+    """
+    def __init__(self, n: int, d: float = 0.75):
+        super().__init__(name=f"kn-{n}", length=12.0 + 4.5 * n)
+        self.n = n
+        self.d = d
+        # tables[m]: dict[tuple[bytes], Counter[next_byte]] for m-byte contexts
+        self.tables: list[dict] = [{} for _ in range(n + 1)]
+        # continuation[m][b] = how many distinct (m-byte) contexts have b as their continuation
+        self.continuation: list[Counter] = [Counter() for _ in range(n + 1)]
+        self.total_bigrams = 0
+        self.fitted = False
+
+    def fit(self, data: bytes):
+        for i in range(self.n, len(data)):
+            for m in range(self.n + 1):
+                ctx = bytes(data[i - m:i])
+                if ctx not in self.tables[m]:
+                    self.tables[m][ctx] = Counter()
+                # for continuation counts at order m, increment the FIRST time
+                # we see (ctx, data[i]) — this measures distinct contexts
+                if self.tables[m][ctx][data[i]] == 0:
+                    self.continuation[m][data[i]] += 1
+                self.tables[m][ctx][data[i]] += 1
+        self.total_bigrams = sum(self.continuation[1].values())
+        self.fitted = True
+
+    def _kn_prob(self, ctx: bytes, b: int, m: int) -> float:
+        """Recursive Kneser-Ney probability of byte `b` after `ctx` at order m."""
+        if m == 0:
+            # base case: continuation distribution
+            total_cont = self.total_bigrams or 1
+            return self.continuation[1][b] / total_cont
+        sub = ctx[-m:] if len(ctx) >= m else ctx
+        t = self.tables[m].get(sub)
+        if not t:
+            return self._kn_prob(ctx, b, m - 1)
+        total = sum(t.values())
+        if total == 0:
+            return self._kn_prob(ctx, b, m - 1)
+        # discount + interpolation with lower order
+        c = t.get(b, 0)
+        prob_main = max(c - self.d, 0.0) / total
+        n_distinct = sum(1 for v in t.values() if v > 0)
+        lambda_w = (self.d * n_distinct) / total
+        return prob_main + lambda_w * self._kn_prob(ctx, b, m - 1)
+
+    def predict(self, ctx: bytes) -> Counter:
+        if not self.fitted:
+            return Counter({b: 1.0 for b in range(256)})
+        return Counter({b: max(self._kn_prob(ctx, b, self.n), 1e-9)
+                        for b in range(256)})
+
+
+class SkipGramPredictor(Program):
+    """Predict from non-adjacent context: bytes at offsets -k, -2k, -3k.
+    Captures dependencies that strict n-grams miss (e.g., long-range
+    grammatical agreement).
+    """
+    def __init__(self, k: int = 2, depth: int = 3):
+        super().__init__(name=f"skip-{k}x{depth}", length=14.0 + 3.0 * depth)
+        self.k = k
+        self.depth = depth
+        # table maps tuple of skip-bytes -> Counter over next byte
+        self.table: dict = {}
+        self.fitted = False
+
+    def _skip_key(self, ctx: bytes) -> tuple | None:
+        offs = [-i * self.k for i in range(1, self.depth + 1)]
+        if any(-o > len(ctx) for o in offs):
+            return None
+        return tuple(ctx[o] for o in offs)
+
+    def fit(self, data: bytes):
+        max_off = self.k * self.depth
+        for i in range(max_off, len(data)):
+            ctx = data[max(0, i - max_off):i]
+            key = self._skip_key(ctx)
+            if key is None:
+                continue
+            if key not in self.table:
+                self.table[key] = Counter()
+            self.table[key][data[i]] += 1
+        self.fitted = True
+
+    def predict(self, ctx: bytes) -> Counter:
+        if not self.fitted:
+            return Counter({b: 1.0 for b in range(256)})
+        key = self._skip_key(ctx)
+        if key is None:
+            return Counter({b: 1.0 for b in range(256)})
+        c = self.table.get(key)
+        if not c:
+            return Counter({b: 1.0 for b in range(256)})
+        return Counter({b: c.get(b, 0) + 0.05 for b in range(256)})
+
+
 # ---------- Combinators ----------
 # These take parent programs and produce a child. This is the recurrence.
 # New = combinator(parent_a, parent_b). No search.
@@ -306,11 +407,22 @@ def load_library(path: str) -> Library | None:
         return None
 
 
-def fresh_library() -> Library:
-    """Seed library with primitives."""
+def fresh_library(rich: bool = True) -> Library:
+    """Seed library with primitives.
+
+    With rich=True (default since V3), also adds Kneser-Ney n-grams and a
+    skip-gram predictor — primitives that capture stronger statistical
+    structure than plain add-k n-grams. Set rich=False for the V1/V2
+    baseline behaviour.
+    """
     lib = Library()
     lib.add(UniformPrimitive())
     lib.add(RepeatPrimitive())
     for n in (1, 2, 3, 4, 5, 6):
         lib.add(NGramPrimitive(n))
+    if rich:
+        for n in (3, 4, 5):
+            lib.add(KneserNeyNGram(n))
+        lib.add(SkipGramPredictor(k=2, depth=3))
+        lib.add(SkipGramPredictor(k=3, depth=3))
     return lib

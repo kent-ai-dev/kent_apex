@@ -132,10 +132,16 @@ def refusal_rate(lib: Library, data: bytes,
 
 
 def fit_primitives(lib: Library, train: bytes):
-    """Fit each NGramPrimitive on the train bytes."""
+    """Fit any primitive that exposes a fit() method on the train bytes.
+    NGramPrimitive, KneserNeyNGram, and SkipGramPredictor all qualify."""
     for p in lib.programs:
-        if isinstance(p, NGramPrimitive):
-            p.fit(train)
+        fit = getattr(p, "fit", None)
+        if callable(fit):
+            try:
+                fit(train)
+            except TypeError:
+                # programs without a (data,) fit signature — skip
+                pass
 
 
 def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,

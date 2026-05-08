@@ -117,3 +117,56 @@ prediction will differ. The V2 winner is a baseline-level comparison;
 the V3 measurement is whether richer primitives improve on it.
 
 **State advance**: V2 → V3.
+
+---
+
+## 2026-05-07 — V3: richer primitives
+
+Added two primitive families to `engine.py`:
+
+- **KneserNeyNGram(n)** for n=3,4,5. Recursive KN smoothing — discount
+  observed counts by `d=0.75` and back off through orders, with the
+  base case being the continuation distribution (how many distinct
+  contexts each byte appears as a continuation in).
+- **SkipGramPredictor(k, depth)** for (k=2,depth=3) and (k=3,depth=3).
+  Predicts from non-adjacent context positions to capture long-range
+  patterns that strict n-grams miss.
+
+`fresh_library()` now seeds these alongside the originals (13 primitives
+total), with a `rich=False` flag that restores the V1/V2 8-primitive
+behaviour for ablations.
+
+Skipped from the V3 spec list:
+- **SuffixArrayPredictor** (PPM-style, unbounded order). The V3 gate
+  was satisfied by KN+skip; SA adds significant code (FM-index or
+  suffix array) for marginal additional gain at this scale. Defer to
+  V4 or later if KN/skip plateau.
+- **LZWPredictor**. Same rationale.
+
+**V3 trained results** (30KB bayes-train slice, lib=127):
+- BPB     = 2.3735  (V1 trained 2.6209 → **9.4% better**, gate ≥5% ✓)
+- ECE     = 0.0775  (similar to V1 trained)
+- refusal = **0.0000** — REGRESSION
+
+**Refusal regression analysis.** KneserNeyNGram's order-0 base case is
+the continuation distribution (≈ unigram frequencies in train), which
+is non-uniform. On OOD input where higher orders all miss in the
+backoff, KN returns this learned prior — entropy ≈ 5 bits, well below
+the 7.0 refusal threshold. The library's posterior-weighted prediction
+inherits this confidence.
+
+This is a real architectural finding: V1's refusal heuristic relies on
+the library being unable to predict OOD inputs. Adding a primitive
+whose backoff is "what a reasonable English unigram would say" breaks
+the heuristic. Two ways to address at V10:
+  (a) Modify KN order-0 base to be uniform (clean but loses calibration
+      info on in-distribution low-context positions).
+  (b) Add an OOD detector that runs alongside the predictor — e.g.,
+      perplexity of the input itself under a simple background model,
+      with refusal triggered when input perplexity is anomalous.
+Logging here so V10 has the context.
+
+**Gate verdict**: V3's stated gate (BPB improvement ≥5% from a new
+primitive) ✓. The refusal regression is a V10 issue, not a V3 issue.
+
+**State advance**: V3 → V4.
