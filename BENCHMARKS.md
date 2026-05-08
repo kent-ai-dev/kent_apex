@@ -33,3 +33,10 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-07 | V11 HellaSwag | accuracy | 0.15 | Rowan/hellaswag 20 ex | **WORSE than random 0.25** — library trained on wiki picks wiki-like endings over story-natural ones |
 | 2026-05-07 | V11 WikiText-103 | BPB | 3.4085 | wikitext-103 validation 10KB | cross-corpus shift from V1's 2.62 on wikitext-2; n-gram tables don't generalize |
 | 2026-05-07 | V11 gate | beat_ngram_baseline | partial | n/a | LAMBADA improvement is real; HellaSwag below random; WikiText cross-corpus deg. Gate explicitly says "do NOT expect to beat GPT-2"; honest interim. |
+| 2026-05-08 | V7 full | BPB | **2.2278** | wikitext-2-raw-v1 heldout 100KB | decay-every=500, decay-factor=0.99, replay-buf=2000. **-15% vs V1 trained, -6% vs V3, BEATS V2 word-tokenizer naive baseline (2.2491)**. Decay+replay produced not just diversity restoration but a real compression win. |
+| 2026-05-08 | V7 full | ECE | 0.0334 | wikitext-2 heldout 100KB | inside V10 gate ≤0.05 ✓ |
+| 2026-05-08 | V7 full | refusal_rate | 0.3962 | os.urandom 20KB | partial recovery (V1=1.0, V3-V5=0.0). Decay bleeds confidence on OOD but doesn't restore the V1 invariant — that's V10's job. |
+| 2026-05-08 | V7 final lib | n_programs | 17 | n/a | smaller than V4-V5 (139) — decay reduces the gap blowup so prune doesn't murder as many programs; the surviving 17 are the actual high-utility ones |
+| 2026-05-08 | V7+V10 stack | refusal English | 0.0000 | hand-crafted text | Toplevel on V7 lib: English in-distribution ✓ |
+| 2026-05-08 | V7+V10 stack | refusal os.urandom | 1.0000 | os.urandom 96B | **V3 silent regression fully repaired** ✓ |
+| 2026-05-08 | V7+V10 stack | refusal Cyrillic | 0.9930 | UTF-8 Cyrillic 64B | foreign-script OOD detected without special-casing ✓ |

@@ -51,16 +51,16 @@ if modal is not None:
     app = modal.App("rce-train")
     image = (
         modal.Image.debian_slim(python_version="3.12")
-        .pip_install("datasets", "tokenizers", "huggingface-hub")
+        .pip_install("datasets", "tokenizers", "huggingface-hub", "zstandard")
         .add_local_dir(str(REPO), remote_path="/repo", copy=True)
     )
     volume = modal.Volume.from_name("rce-libraries", create_if_missing=True)
 
     @app.function(image=image, cpu=4, memory=8192,
-                  volumes={"/lib": volume}, timeout=3600)
+                  volumes={"/vol": volume}, timeout=3600)
     def worker_train(shard_id: int, shard_bytes: bytes,
                      bayes_train_bytes: int = 50_000) -> bytes:
-        """Train one shard. Returns the pickled library log_weights."""
+        """Train one shard. Returns the pickled library log_weights + lengths."""
         import sys
         sys.path.insert(0, "/repo")
         from engine import fresh_library
@@ -69,13 +69,156 @@ if modal is not None:
         lib = fresh_library()
         fit_primitives(lib, shard_bytes)
         bayes_train(lib, shard_bytes[:bayes_train_bytes],
-                    decay_every_steps=500, replay_buffer_size=2000)
+                    decay_every_steps=500, decay_factor=0.99,
+                    replay_buffer_size=2000, replay_sample=256)
 
         return pickle.dumps({
             "shard_id": shard_id,
             "log_weights": lib.log_weights,
             "lengths": {p.name: p.length for p in lib.programs},
+            "n_programs": len(lib.programs),
         })
+
+    @app.function(image=image, cpu=4, memory=16384,
+                  volumes={"/vol": volume}, timeout=7200)
+    def worker_train_hf(shard_id: int, dataset_name: str,
+                        config: str | None,
+                        skip_bytes: int, take_bytes: int,
+                        bayes_train_bytes: int = 200_000) -> bytes:
+        """V9: fetch a slice of an HF dataset INSIDE the worker (no 1GB wire
+        transfer), train, return weights. Each worker pulls bytes
+        [skip_bytes, skip_bytes+take_bytes) from the streaming dataset.
+        """
+        import sys
+        sys.path.insert(0, "/repo")
+        from engine import fresh_library
+        from bench import fit_primitives, bayes_train
+        from datasets import load_dataset
+
+        ds = load_dataset(dataset_name, config, split="train", streaming=True)
+        buf = bytearray()
+        skipped = 0
+        for row in ds:
+            text_field = next((k for k in ("text", "content", "sentence")
+                               if k in row), None)
+            if text_field is None:
+                continue
+            v = row.get(text_field)
+            if not v:
+                continue
+            b = str(v).encode("utf-8", errors="replace")
+            if skipped + len(b) <= skip_bytes:
+                skipped += len(b)
+                continue
+            # we may straddle the skip boundary on first useful chunk
+            if skipped < skip_bytes:
+                b = b[skip_bytes - skipped:]
+                skipped = skip_bytes
+            buf.extend(b)
+            if len(buf) >= take_bytes:
+                break
+        shard_bytes = bytes(buf[:take_bytes])
+
+        lib = fresh_library()
+        fit_primitives(lib, shard_bytes)
+        bayes_train(lib, shard_bytes[:bayes_train_bytes],
+                    decay_every_steps=500, decay_factor=0.99,
+                    replay_buffer_size=2000, replay_sample=256)
+
+        return pickle.dumps({
+            "shard_id": shard_id,
+            "n_bytes_trained": len(shard_bytes),
+            "log_weights": lib.log_weights,
+            "lengths": {p.name: p.length for p in lib.programs},
+            "n_programs": len(lib.programs),
+        })
+
+    @app.local_entrypoint()
+    def run_v9(dataset: str = "monology/pile-uncopyrighted",
+               config: str | None = None,
+               shards: int = 16,
+               bytes_per_shard: int = 30_000_000,
+               bayes_train_bytes: int = 200_000,
+               save_path: str = "v9_pile_merged.pkl"):
+        """V9 first-serious-training-run orchestrator: each Modal worker
+        pulls a non-overlapping slice of an HF streaming dataset (default
+        pile-uncopyrighted), trains, and ships back log_weights. Master
+        merges with prior-correction.
+
+        Defaults: 16 × 30MB ≈ 480MB; bump --shards to 32 and/or
+        --bytes-per-shard for the full 1GB target. v1.md V9 gate is
+        BPB ≤ 2.5 on wikitext-103 held-out — measured locally after merge.
+        """
+        import time as _t
+        shard_args = [
+            (i, dataset, config, i * bytes_per_shard, bytes_per_shard,
+             bayes_train_bytes)
+            for i in range(shards)
+        ]
+        print(f"V9: {shards} workers × {bytes_per_shard:,} bytes each "
+              f"({shards * bytes_per_shard:,} total) from {dataset}")
+        t0 = _t.time()
+        payload_blobs = list(worker_train_hf.starmap(shard_args))
+        elapsed = _t.time() - t0
+        print(f"all {shards} V9 workers done in {elapsed:.1f}s wall-clock")
+        payloads = [pickle.loads(b) for b in payload_blobs]
+        for p in payloads:
+            print(f"  shard {p['shard_id']}: {p['n_bytes_trained']:,} bytes -> "
+                  f"{p['n_programs']} programs")
+        merged = merge_libraries(payloads)
+        out = REPO / save_path
+        with out.open("wb") as f:
+            pickle.dump(merged, f)
+        print(f"V9 merged: {merged['n_programs']} unique programs; "
+              f"{merged['n_shared']} appeared in ≥2 shards")
+        print(f"saved {out}")
+        return merged
+
+    @app.local_entrypoint()
+    def run_distributed(shards: int = 4,
+                        bytes_per_shard: int = 30000,
+                        bayes_train_bytes: int = 50000,
+                        save_path: str = "merged_library.pkl"):
+        """V8 orchestrator: split local wikitext-2 train into N shards,
+        ship to N parallel Modal workers via .map(), collect, merge, save.
+
+        For V9-scale runs: increase --shards (e.g. 32) and --bytes-per-shard
+        (e.g. 30_000_000 = 30MB; 32×30MB ≈ 1GB total) — same code path.
+        """
+        import time as _t
+        train_bytes = (REPO / "data" / "wikitext2_train.txt").read_bytes()
+        if len(train_bytes) < shards * bytes_per_shard:
+            raise SystemExit(
+                f"need ≥{shards * bytes_per_shard:,} bytes; "
+                f"data/wikitext2_train.txt has {len(train_bytes):,}. "
+                f"For V9-scale, swap to a streamed pile-uncopyrighted source."
+            )
+        shard_args = [
+            (i, train_bytes[i * bytes_per_shard:(i + 1) * bytes_per_shard],
+             bayes_train_bytes)
+            for i in range(shards)
+        ]
+        print(f"shipping {shards} shards × {bytes_per_shard:,} bytes to Modal "
+              f"(bayes_train_bytes={bayes_train_bytes:,} per worker)")
+
+        t0 = _t.time()
+        # starmap to expand the (shard_id, shard_bytes, bayes_train_bytes) tuple
+        payload_blobs = list(worker_train.starmap(shard_args))
+        elapsed = _t.time() - t0
+        print(f"all {shards} workers done in {elapsed:.1f}s wall-clock")
+
+        payloads = [pickle.loads(b) for b in payload_blobs]
+        for p in payloads:
+            print(f"  shard {p['shard_id']}: {p['n_programs']} programs")
+
+        merged = merge_libraries(payloads)
+        out = REPO / save_path
+        with out.open("wb") as f:
+            pickle.dump(merged, f)
+        print(f"merged: {merged['n_programs']} unique programs; "
+              f"{merged['n_shared']} appeared in ≥2 shards")
+        print(f"saved {out}")
+        return merged
 
 
 # ---------- merge logic (pure, runs anywhere) ----------
