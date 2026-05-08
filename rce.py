@@ -20,7 +20,11 @@ from engine import (
 )
 
 
-MODEL_PATH = os.path.expanduser("~/.rce_library.pkl")
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.environ.get(
+    "RCE_LIBRARY",
+    os.path.join(REPO_DIR, ".rce_library.pkl"),
+)
 
 
 def cmd_train(source: str | None):

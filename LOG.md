@@ -170,3 +170,41 @@ Logging here so V10 has the context.
 primitive) ✓. The refusal regression is a V10 issue, not a V3 issue.
 
 **State advance**: V3 → V4.
+
+---
+
+## 2026-05-07 — V4: combinator expansion
+
+Added three combinators to `engine.py`:
+- `Gated(a, b, trigger_set)` — multi-byte trigger; generalizes `Branched`.
+- `Memoized(a)` — LRU cache wrapper (256 entries, 8-byte tail key).
+- `Mixed(parents, weights)` — n-way mixture; generalizes binary `Composed`.
+COMBINATORS list extended; `grow()` updated to spawn them randomly.
+
+**Trained results** (30KB bayes-train, lib=139):
+- BPB     = 2.4297  (slightly worse than V3's 2.3735)
+- ECE     = 0.0799
+- refusal = 0.0000  (V3 regression persists)
+
+**Library composition by combinator** (post-train, lib=139):
+  gate=24, compose=23, mix=22, abstract=20, branch=14, primitive=13,
+  memo=13, recur=10
+
+**V4 gate verdict**: PASS. `memo` appears 8 times in top-20 programs;
+`compose` (legacy) once. `gate` and `mix` are well-represented in the
+library but did NOT earn top-20 placement; flagged as removal
+candidates if they're still inactive at V5.
+
+**Mode-collapse finding** (drives V7 priority): the posterior has
+collapsed entirely onto `kn-5` (weight 1.0; every other program ≈0).
+Cause: Bayesian update accumulates log-weight with `lr=0.03` over
+~7500 steps; once one program is consistently best, the gap blows up
+(any 2×-better-on-avg program yields ~150 nats of log-odds in 7500
+steps). The library is no longer an ensemble — it's effectively just
+`kn-5`. V4 BPB = V4 mostly = kn-5 prediction.
+
+This is exactly what V7 (decay + replay) is designed to address. Logging
+in state.json. Until V7 the per-version BPB numbers reflect "the
+single program the posterior collapsed on" plus a small noise floor.
+
+**State advance**: V4 → V5.

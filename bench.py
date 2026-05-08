@@ -147,11 +147,17 @@ def fit_primitives(lib: Library, train: bytes):
 def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,
                 update_every: int = 4, grow_every_steps: int = 200,
                 max_lib_size: int = 150, n_children: int = 4,
-                progress_every: int | None = None) -> int:
-    """Run the Bayesian-update + grow + prune phase, mirroring rce.py train.
-    Returns number of update steps performed.
+                progress_every: int | None = None,
+                abstract_every_grows: int = 5) -> int:
+    """Run the Bayesian-update + grow + prune + abstract phase.
+
+    `abstract_every_grows`: every Nth grow phase, also run
+    `lib.abstract_phase()` to lift recurring sub-programs into Memoized
+    primitives (V5 wake-sleep step). Set to 0 to disable.
     """
     step = 0
+    grow_phase = 0
+    abstractions: list[str] = []
     for i in range(1, len(train)):
         if i % update_every != 0:
             continue
@@ -161,11 +167,17 @@ def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,
         step += 1
         if step % grow_every_steps == 0:
             lib.grow(n_children=n_children)
+            grow_phase += 1
+            if abstract_every_grows and grow_phase % abstract_every_grows == 0:
+                lifted = lib.abstract_phase(scan_top=50, min_count=3, max_lift=2)
+                abstractions.extend(p.name for p in lifted)
             lib.prune(max_size=max_lib_size)
             if progress_every and step % progress_every == 0:
-                print(f"  bayes-train step {step}: |lib|={len(lib.programs)}")
-    # final growth + prune to mirror rce.py
+                print(f"  bayes-train step {step}: |lib|={len(lib.programs)}"
+                      + (f"  +abstract={len(abstractions)}" if abstractions else ""))
     lib.grow(n_children=n_children * 2)
+    if abstract_every_grows:
+        lib.abstract_phase(scan_top=50, min_count=3, max_lift=3)
     lib.prune(max_size=max_lib_size)
     return step
 

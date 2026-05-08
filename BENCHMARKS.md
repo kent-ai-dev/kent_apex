@@ -17,3 +17,7 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-07 | V3 trained | BPB | 2.3735 | wikitext-2-raw-v1 heldout 100KB | added KN-3,4,5 + skip-2x3, skip-3x3; 30KB bayes-train; lib=127. **9.4% better than V1 trained (gate 5%) ✓** |
 | 2026-05-07 | V3 trained | ECE | 0.0775 | wikitext-2-raw-v1 heldout 100KB | similar to V1 trained |
 | 2026-05-07 | V3 trained | refusal_rate | 0.0000 | os.urandom 20KB | **REGRESSION** — KN's continuation-distribution base case is non-uniform, so the library is now confident on random bytes too. V10 must address. |
+| 2026-05-07 | V4 trained | BPB | 2.4297 | wikitext-2-raw-v1 heldout 100KB | added Gated/Memoized/Mixed combinators; lib=139. Slightly worse than V3 — additional combinators slowed posterior concentration; net effect: posterior collapses onto kn-5 anyway (weight 1.0). V7 decay+replay should fix. |
+| 2026-05-07 | V4 trained | ECE | 0.0799 | wikitext-2-raw-v1 heldout 100KB | similar to V3 |
+| 2026-05-07 | V4 trained | refusal_rate | 0.0000 | os.urandom 20KB | V3 regression carries forward |
+| 2026-05-07 | V4 gate-check | combinators_in_top20 | memo×8 | n/a | gate ✓ — memo appears 8× in top-20. compose×1 also present. gate, mix did NOT make top-20 despite many in library (gate=24, mix=22) — kept for now, candidates for removal if still dead at V5. |

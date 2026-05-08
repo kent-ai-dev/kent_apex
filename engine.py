@@ -269,7 +269,84 @@ class Recurred(Program):
         return self.a.predict(new_ctx)
 
 
-COMBINATORS = ["compose", "branch", "abstract", "recur"]
+class Gated(Program):
+    """Multi-trigger context-conditional: use parent A if last byte is in
+    `trigger_set`, otherwise B. Generalizes Branched (single-byte trigger).
+    """
+    def __init__(self, a: Program, b: Program, trigger_set: frozenset[int]):
+        triggers = sorted(trigger_set)[:5]   # cap label length
+        tag = "+".join(str(t) for t in triggers) + (
+            f"+{len(trigger_set)-5}more" if len(trigger_set) > 5 else "")
+        name = f"gate({a.name},{b.name}|{{{tag}}})"
+        length = a.length + b.length + 8.0 + 0.5 * len(trigger_set)
+        super().__init__(name=name, length=length,
+                         parents=(a, b), combinator="gate")
+        self.a, self.b, self.trigger_set = a, b, trigger_set
+
+    def predict(self, ctx: bytes) -> Counter:
+        if ctx and ctx[-1] in self.trigger_set:
+            return self.a.predict(ctx)
+        return self.b.predict(ctx)
+
+
+class Memoized(Program):
+    """LRU-cache wrapper: parent A's predictions are cached by context tail.
+    Doesn't change semantics — only performance — but length is heavier so
+    Memoized children only survive if they're getting hit often.
+    """
+    def __init__(self, a: Program, cache_size: int = 256, key_len: int = 8):
+        name = f"memo({a.name})"
+        length = a.length + 3.0
+        super().__init__(name=name, length=length,
+                         parents=(a,), combinator="memo")
+        self.a = a
+        self.cache_size = cache_size
+        self.key_len = key_len
+        self._cache: dict = {}
+        self._order: list = []
+
+    def predict(self, ctx: bytes) -> Counter:
+        key = ctx[-self.key_len:]
+        if key in self._cache:
+            return self._cache[key]
+        result = self.a.predict(ctx)
+        self._cache[key] = result
+        self._order.append(key)
+        if len(self._order) > self.cache_size:
+            old = self._order.pop(0)
+            self._cache.pop(old, None)
+        return result
+
+
+class Mixed(Program):
+    """N-way mixture: weighted sum of arbitrary parent predictions. Generalizes
+    binary Composed. Weights default to uniform; sum is normalised at predict.
+    """
+    def __init__(self, parents: tuple[Program, ...], weights: tuple[float, ...] | None = None):
+        if len(parents) < 2:
+            raise ValueError("Mixed needs ≥2 parents")
+        if weights is None:
+            weights = tuple(1.0 / len(parents) for _ in parents)
+        if len(weights) != len(parents):
+            raise ValueError("weights/parents length mismatch")
+        name = f"mix({','.join(p.name[:12] for p in parents)})"
+        length = sum(p.length for p in parents) + 5.0 + 0.5 * len(parents)
+        super().__init__(name=name, length=length,
+                         parents=tuple(parents), combinator="mix")
+        self.ps = parents
+        self.ws = weights
+
+    def predict(self, ctx: bytes) -> Counter:
+        out = Counter()
+        for p, w in zip(self.ps, self.ws):
+            d = p.predict(ctx)
+            tot = sum(d.values()) or 1.0
+            for k in range(256):
+                out[k] += w * (d.get(k, 0.01) / tot)
+        return out
+
+
+COMBINATORS = ["compose", "branch", "abstract", "recur", "gate", "memo", "mix"]
 
 
 # ---------- The Library ----------
@@ -361,8 +438,20 @@ class Library:
                     child = Branched(a, b, trigger=random.randint(0, 255))
                 elif combinator == "abstract":
                     child = Abstracted(a, b)
-                else:  # recur
+                elif combinator == "recur":
                     child = Recurred(a)
+                elif combinator == "gate":
+                    triggers = random.sample(range(256),
+                                              k=random.randint(2, 8))
+                    child = Gated(a, b, trigger_set=frozenset(triggers))
+                elif combinator == "memo":
+                    child = Memoized(a)
+                elif combinator == "mix":
+                    n_ps = random.randint(3, min(5, len(parents)))
+                    ps = tuple(random.sample(parents, n_ps))
+                    child = Mixed(ps)
+                else:
+                    continue
             except Exception:
                 continue
             if child.name not in self.log_weights:
@@ -388,6 +477,58 @@ class Library:
         self.programs = keep
         self.log_weights = {k: v for k, v in self.log_weights.items()
                             if k in kept_names}
+
+    def abstract_phase(self, scan_top: int = 50, min_count: int = 3,
+                       max_lift: int = 3):
+        """V5 wake-sleep: scan the top `scan_top` programs and lift any
+        sub-program (i.e., a parent in their lineage) that appears in ≥
+        `min_count` of them into a Memoized primitive.
+
+        Equivalence is by program name (which is deterministic from
+        structure + parameters), so two `compose(a,b,alpha=0.5)` programs
+        are the same sub-tree but `compose(a,b,alpha=0.7)` is different.
+        Caps lifts per call so we don't pour the whole library back in
+        as primitives in one pass.
+
+        Returns a list of newly-lifted Memoized primitives.
+        """
+        from collections import Counter as _C
+        post = self.posterior()
+        ranked = sorted(self.programs,
+                        key=lambda p: post.get(p.name, 0.0), reverse=True)[:scan_top]
+        # Count how many top-N programs reference each ancestor by name.
+        # Walking the lineage means: for each ranked program, walk its parents,
+        # grandparents, etc. and tally each unique ancestor once per ranked program.
+        usage = _C()
+        for prog in ranked:
+            seen = set()
+            stack = list(prog.parents)
+            while stack:
+                anc = stack.pop()
+                if anc.name in seen:
+                    continue
+                seen.add(anc.name)
+                usage[anc.name] += 1
+                stack.extend(anc.parents)
+        # Candidates: appear in ≥ min_count ranked programs, NOT already a primitive.
+        prog_by_name = {p.name: p for p in self.programs}
+        candidates = [(name, count) for name, count in usage.most_common()
+                      if count >= min_count
+                      and name in prog_by_name
+                      and prog_by_name[name].combinator != "primitive"
+                      and not name.startswith("memo(")]
+        lifted: list[Program] = []
+        for name, _ in candidates[:max_lift]:
+            target = prog_by_name[name]
+            wrapped = Memoized(target)
+            # mark the wrapper as a primitive so prune() keeps it forever
+            wrapped.combinator = "primitive"
+            wrapped.length = max(target.length - 4.0, 6.0)  # cheaper to use, by construction
+            wrapped.name = f"abstracted({name})"
+            if wrapped.name not in self.log_weights:
+                self.add(wrapped)
+                lifted.append(wrapped)
+        return lifted
 
 
 # ---------- Persistence ----------
