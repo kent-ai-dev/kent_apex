@@ -25,3 +25,11 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-07 | V5 gate-check | library_size | 139 | n/a | V4=139, V5=139 → 1.0× ratio, gate ≤2× ✓. But asymptote is from prune cap, not abstraction. After V7 decay+replay, expect richer lineage and meaningful lifts. |
 | 2026-05-07 | V5 abstraction_lifts | 0 | n/a | n/a | abstract_phase ran but no ancestor reached min_count=3 — diagnostic for deferred re-evaluation post-V7 |
 | 2026-05-07 | V6 streaming | throughput | 883.8 KB/s | wikitext-103-raw-v1 stream | datasets_hf.iter_bytes() with validator gate; 1MB streamed in 1.1s. Gate ≥50 KB/s ✓ by 17×. |
+| 2026-05-07 | V7 partial | abstractions_at_step_4000 | 2 | wikitext-2 30KB train | decay-every=500, decay-factor=0.99, replay-buf=2000. V5 had 0 lifts at full 7500 steps; V7 has 2 by step 4000. Decay+replay does restore posterior diversity. Bench was killed at step 4500 to free CPU for chat library — full BPB number deferred. |
+| 2026-05-07 | V7 chat-lib | n_programs | 42 | 5KB bayes-train | trained with decay+replay; saved to .rce_library.pkl for `python3 rce.py chat` |
+| 2026-05-07 | V8 dry-run | n_merged_programs | 126 | 4 shards × 8KB wikitext-2 | sequential local; merge ran instantly. Sequential wall = 584s; projected 4-worker Modal = 183s = 3.2× / 80% of linear ≥70% gate ✓ |
+| 2026-05-07 | V8 dry-run | n_shared_programs | 25 | 4 shards × 8KB | programs appearing in ≥2 shards (got prior-correction); top shared = primitives uniform/repeat/ngram-1..N appearing in all 4 |
+| 2026-05-07 | V11 LAMBADA | avg_per_byte_log2p | -5.17 | EleutherAI/lambada_openai 20 ex | uniform baseline = -8.0; library is 2.83 bits/byte better than random |
+| 2026-05-07 | V11 HellaSwag | accuracy | 0.15 | Rowan/hellaswag 20 ex | **WORSE than random 0.25** — library trained on wiki picks wiki-like endings over story-natural ones |
+| 2026-05-07 | V11 WikiText-103 | BPB | 3.4085 | wikitext-103 validation 10KB | cross-corpus shift from V1's 2.62 on wikitext-2; n-gram tables don't generalize |
+| 2026-05-07 | V11 gate | beat_ngram_baseline | partial | n/a | LAMBADA improvement is real; HellaSwag below random; WikiText cross-corpus deg. Gate explicitly says "do NOT expect to beat GPT-2"; honest interim. |

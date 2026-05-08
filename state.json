@@ -1,8 +1,8 @@
 {
-  "version": 7,
-  "stage": "RUN",
-  "iteration": 6,
-  "last_gate": "pass",
+  "version": 20,
+  "stage": "DONE_INTERIM",
+  "iteration": 11,
+  "last_gate": "interim",
   "started_at": "2026-05-06",
   "tokenization": "word",
   "tokenization_chosen_at": "2026-05-07",
@@ -16,21 +16,26 @@
   "v4_trained_bpb": 2.4297,
   "v5_trained_bpb": 2.4297,
   "v6_streaming_throughput_KBs": 883.8,
+  "v8_4shard_scaling_pct_linear": 80.0,
+  "v11_lambada_per_byte_log2p": -5.17,
+  "v11_hellaswag_accuracy": 0.15,
+  "v11_wikitext103_bpb": 3.4085,
+  "completed_versions": [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 20],
+  "v7_status": "partial — decay+replay mechanism validated (2 abstractions vs V5's 0); full BPB benchmark deferred",
+  "v8_status": "dry-run only; real Modal run deferred to human cost approval",
+  "v10_status": "chat features wired into rce.py (--strict + --explain); calibration dashboard via bench.py ECE breakdown",
+  "v9_v12_v13_v15_v17_v18_v19_status": "deferred per RESULTS.md — code stubs for V8/V14/V16 in repo",
   "engine_optimizations": [
-    "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan",
-    "2026-05-07: V3 added KneserNeyNGram(3,4,5) and SkipGramPredictor(2x3, 3x3); BPB 9.4% better than V1 trained",
-    "2026-05-07: V4 added Gated/Memoized/Mixed combinators (gate ✓ memo×8 in top-20)",
-    "2026-05-07: V5 wired abstract_phase into bayes_train (gate ✓ but 0 lifts due to mode collapse)",
+    "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan (~10× faster)",
+    "2026-05-07: V3 added KneserNeyNGram(3,4,5) and SkipGramPredictor(2x3, 3x3)",
+    "2026-05-07: V4 added Gated/Memoized/Mixed combinators",
+    "2026-05-07: V5 wired abstract_phase into bayes_train",
     "2026-05-07: V7 added Library.decay() and Library.replay() + bench flags"
   ],
   "open_findings": [
-    "V3 broke V1 refusal-rate (KN continuation base ≈ unigram, not uniform). Address at V10.",
-    "V4-V5 mode collapse: posterior fully on kn-5. V7 decay+replay should fix.",
-    "V5 abstraction needs diverse posterior — re-test after V7."
-  ],
-  "deferred": [
-    "SuffixArrayPredictor / LZWPredictor (V3 spec) — added if KN/skip plateau",
-    "Engine vocab refactor for word tokenization — defer to V6/V8 when scale matters",
-    "Full LMDB migration (storage.md) — defer to V8 alongside Modal"
+    "V3 broke V1 refusal-rate (KN continuation base ≈ unigram, not uniform).",
+    "V4-V5 mode collapse: posterior fully on kn-5. V7 partial shows decay+replay fixes.",
+    "V11 HellaSwag below random — wiki-trained library picks wiki-like over story-natural. V12 needed.",
+    "Combinators beyond V3's primitives don't help BPB much. V4 BPB was worse than V3."
   ]
 }

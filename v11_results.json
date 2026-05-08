@@ -1,0 +1,21 @@
+{
+  "lambada": {
+    "task": "lambada",
+    "n": 20,
+    "avg_score": -30.483560988182727,
+    "avg_per_byte_log2p": -5.168884698510828,
+    "interpretation": "higher = better; baseline (uniform 256) = -8 per byte"
+  },
+  "hellaswag": {
+    "task": "hellaswag",
+    "n": 20,
+    "accuracy": 0.15,
+    "random_baseline": 0.25
+  },
+  "wikitext_ppl": {
+    "task": "wikitext-103-ppl",
+    "n_bytes": 9999,
+    "bpb": 3.4085,
+    "perplexity_per_byte": 10.6188
+  }
+}

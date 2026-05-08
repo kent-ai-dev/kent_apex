@@ -108,27 +108,80 @@ def sample_from(dist: Counter, temperature: float = 0.8) -> int:
 
 
 def generate(lib: Library, prompt: bytes, max_bytes: int = 200,
-             temperature: float = 0.8, ctx_window: int = 16) -> bytes:
-    """Generate a continuation of the prompt."""
+             temperature: float = 0.8, ctx_window: int = 16,
+             strict_threshold: float = 0.0,
+             explain: bool = False) -> bytes:
+    """Generate a continuation of the prompt.
+
+    V10 additions:
+    - `strict_threshold` > 0: refuse to emit a byte if its (normalised)
+      confidence is below the threshold. Returns whatever was emitted
+      so far + a refusal marker.
+    - `explain`: after each byte, print top-3 programs that contributed
+      most to selecting it.
+    """
     out = bytearray(prompt)
     for _ in range(max_bytes):
         ctx = bytes(out[-ctx_window:])
         dist = lib.predict(ctx)
+        total = sum(dist.values()) or 1.0
         nxt = sample_from(dist, temperature=temperature)
+        conf = dist.get(nxt, 0.0) / total
+
+        # Print the explain line BEFORE the abstain check so the user
+        # can see which programs voted at the position we actually
+        # abstained on (previously the explain printed only for
+        # accepted bytes, making the abstain message look detached
+        # from the voters shown above it).
+        if explain:
+            top3 = _top_voting_programs(lib, ctx, nxt, k=3)
+            mark = " [ABSTAIN]" if (strict_threshold > 0 and conf < strict_threshold) else ""
+            print(f"  byte={chr(nxt) if 32 <= nxt < 127 else f'\\x{nxt:02x}'} "
+                  f"conf={conf:.3f}{mark}", end=" ")
+            print("top voters:",
+                  ", ".join(f"{n}:{w:.3f}" for n, w in top3))
+
+        if strict_threshold > 0 and conf < strict_threshold:
+            out.extend(b"[abstain: confidence " + f"{conf:.2f}".encode() + b"]")
+            break
+
         out.append(nxt)
-        # stop on newline if we have at least some output
         if nxt == ord("\n") and len(out) - len(prompt) > 4:
             break
     return bytes(out[len(prompt):])
 
 
-def cmd_chat():
+def _top_voting_programs(lib: Library, ctx: bytes, target_byte: int, k: int = 3):
+    """Return the top-k (program_name, weighted_contribution) for `target_byte`.
+    Decomposes lib.predict to attribute the chosen byte's mass to programs.
+    """
+    post = lib.posterior()
+    contribs: list[tuple[str, float]] = []
+    for p in lib.programs:
+        w = post.get(p.name, 0.0)
+        if w < 1e-6:
+            continue
+        d = p.predict(ctx)
+        tot = sum(d.values()) or 1.0
+        contribs.append((p.name, w * (d.get(target_byte, 0.0) / tot)))
+    contribs.sort(key=lambda x: -x[1])
+    return contribs[:k]
+
+
+def cmd_chat(strict_threshold: float = 0.0, explain: bool = False):
     lib = load_library(MODEL_PATH)
     if lib is None:
         print("no trained model. run: python rce.py train <file>")
         return
     print(f"loaded library: {len(lib.programs)} programs")
-    print("type to chat. /quit to exit, /entropy to see uncertainty, /top to see active programs")
+    if strict_threshold > 0:
+        print(f"--strict mode: abstain when byte-level confidence < {strict_threshold:.2f}")
+        print("  (note: byte-level top-prediction confidence rarely exceeds 0.3"
+              " outside very predictable contexts like spaces after words;"
+              " 0.10-0.15 is a more typical abstain threshold)")
+    if explain:
+        print("--explain mode: per-byte top voters printed")
+    print("type to chat. /quit, /entropy, /top, /strict <threshold>, /explain on|off")
     print()
     while True:
         try:
@@ -141,7 +194,6 @@ def cmd_chat():
         if line == "/quit":
             break
         if line == "/entropy":
-            ctx = line.encode("utf-8")[-8:]
             print(f"  entropy on empty ctx: {lib.entropy(b''):.2f} bits")
             print(f"  (max possible = 8.0; high = system is uncertain)")
             continue
@@ -150,14 +202,31 @@ def cmd_chat():
             for p in lib.top_programs(k=8):
                 print(f"  {post.get(p.name, 0):.4f}  {p.name}")
             continue
+        if line.startswith("/strict"):
+            parts = line.split()
+            # Byte-level top-prediction confidence is bounded by the
+            # vocab structure; even for "obvious" continuations like
+            # the space after a word, conf rarely exceeds ~0.3, so a
+            # 0.30 default is effectively "always abstain". 0.10 is a
+            # more honest "I really have no idea" gate. Pass an
+            # explicit value to override.
+            strict_threshold = float(parts[1]) if len(parts) > 1 else 0.10
+            print(f"  strict threshold = {strict_threshold:.2f}")
+            continue
+        if line.startswith("/explain"):
+            parts = line.split()
+            explain = (len(parts) > 1 and parts[1] == "on")
+            print(f"  explain = {explain}")
+            continue
 
         prompt = (line + "\n").encode("utf-8", errors="replace")
-        # measure uncertainty before generating
         h = lib.entropy(prompt[-8:])
         if h > 7.5:
             print("rce> [I don't have enough learned structure to respond meaningfully.]")
             continue
-        reply_bytes = generate(lib, prompt, max_bytes=160, temperature=0.7)
+        reply_bytes = generate(lib, prompt, max_bytes=160, temperature=0.7,
+                                strict_threshold=strict_threshold,
+                                explain=explain)
         try:
             reply = reply_bytes.decode("utf-8", errors="replace").strip()
         except Exception:
@@ -202,7 +271,16 @@ def main():
         source = sys.argv[2] if len(sys.argv) > 2 else None
         cmd_train(source)
     elif cmd == "chat":
-        cmd_chat()
+        # parse --strict T and --explain flags
+        rest = sys.argv[2:]
+        strict = 0.0
+        explain = False
+        for i, a in enumerate(rest):
+            if a == "--strict" and i + 1 < len(rest):
+                strict = float(rest[i + 1])
+            if a == "--explain":
+                explain = True
+        cmd_chat(strict_threshold=strict, explain=explain)
     elif cmd == "status":
         cmd_status()
     elif cmd == "reset":
