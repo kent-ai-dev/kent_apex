@@ -15,7 +15,7 @@ import random
 from collections import Counter
 
 from engine import (
-    Library, NGramPrimitive,
+    Library, NGramPrimitive, Toplevel,
     fresh_library, load_library, save_library,
 )
 
@@ -168,11 +168,18 @@ def _top_voting_programs(lib: Library, ctx: bytes, target_byte: int, k: int = 3)
     return contribs[:k]
 
 
-def cmd_chat(strict_threshold: float = 0.0, explain: bool = False):
+def cmd_chat(strict_threshold: float = 0.0, explain: bool = False,
+             toplevel: bool = False, refusal_tau: float = 0.5):
     lib = load_library(MODEL_PATH)
     if lib is None:
         print("no trained model. run: python rce.py train <file>")
         return
+    if toplevel and not isinstance(lib, Toplevel):
+        # V10: wrap a saved bare library in Toplevel for the chat session
+        lib = Toplevel(lib, vocab_size=256, evidence_window=32)
+        print(f"wrapped library in Toplevel (V10 architectural refusal)")
+    elif isinstance(lib, Toplevel):
+        print(f"library is already Toplevel-wrapped (V10)")
     print(f"loaded library: {len(lib.programs)} programs")
     if strict_threshold > 0:
         print(f"--strict mode: abstain when byte-level confidence < {strict_threshold:.2f}")
@@ -220,10 +227,21 @@ def cmd_chat(strict_threshold: float = 0.0, explain: bool = False):
             continue
 
         prompt = (line + "\n").encode("utf-8", errors="replace")
-        h = lib.entropy(prompt[-8:])
-        if h > 7.5:
-            print("rce> [I don't have enough learned structure to respond meaningfully.]")
-            continue
+        # V10 refusal: if Toplevel-wrapped, P(Background|prompt) > τ blocks
+        # generation BEFORE we sample. This is the architectural invariant
+        # — not the V1 entropy heuristic which the V3 KN regression broke.
+        if isinstance(lib, Toplevel):
+            r = lib.refusal_score(prompt)
+            if r > refusal_tau:
+                print(f"rce> [refused: P(Background|prompt) = {r:.3f} > "
+                      f"τ = {refusal_tau:.2f}]")
+                continue
+        else:
+            # back-compat: V1 entropy gate when no Toplevel wrapper
+            h = lib.entropy(prompt[-8:])
+            if h > 7.5:
+                print("rce> [I don't have enough learned structure to respond meaningfully.]")
+                continue
         reply_bytes = generate(lib, prompt, max_bytes=160, temperature=0.7,
                                 strict_threshold=strict_threshold,
                                 explain=explain)
@@ -271,16 +289,23 @@ def main():
         source = sys.argv[2] if len(sys.argv) > 2 else None
         cmd_train(source)
     elif cmd == "chat":
-        # parse --strict T and --explain flags
+        # parse --strict T, --explain, --toplevel, --tau τ flags
         rest = sys.argv[2:]
         strict = 0.0
         explain = False
+        toplevel = False
+        tau = 0.5
         for i, a in enumerate(rest):
             if a == "--strict" and i + 1 < len(rest):
                 strict = float(rest[i + 1])
             if a == "--explain":
                 explain = True
-        cmd_chat(strict_threshold=strict, explain=explain)
+            if a == "--toplevel":
+                toplevel = True
+            if a == "--tau" and i + 1 < len(rest):
+                tau = float(rest[i + 1])
+        cmd_chat(strict_threshold=strict, explain=explain,
+                 toplevel=toplevel, refusal_tau=tau)
     elif cmd == "status":
         cmd_status()
     elif cmd == "reset":

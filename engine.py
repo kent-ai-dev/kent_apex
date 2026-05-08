@@ -40,12 +40,19 @@ class Program:
 # These are the seed programs. Everything grows from these by combinator.
 
 class UniformPrimitive(Program):
-    """Total ignorance: every byte equally likely."""
-    def __init__(self):
-        super().__init__(name="uniform", length=8.0)
+    """Total ignorance: every token equally likely.
+
+    `vocab_size` parameterises the alphabet so the same primitive can serve
+    as the architectural Background in V10's Toplevel mixture for any
+    tokenisation (bytes, BPE, word). Default 256 = bytes.
+    """
+    def __init__(self, vocab_size: int = 256):
+        super().__init__(name=f"uniform-{vocab_size}" if vocab_size != 256 else "uniform",
+                         length=8.0)
+        self.vocab_size = vocab_size
 
     def predict(self, ctx: bytes) -> Counter:
-        return Counter({b: 1.0 for b in range(256)})
+        return Counter({b: 1.0 for b in range(self.vocab_size)})
 
 
 class NGramPrimitive(Program):
@@ -564,16 +571,135 @@ def load_library(path: str) -> Library | None:
         return None
 
 
-def fresh_library(rich: bool = True) -> Library:
+class Toplevel:
+    """V10 architectural refusal invariant: a Bayesian mixture between the
+    trained library (in-distribution) and a literal `UniformPrimitive`
+    (the Background reference). `refusal_score(ctx)` is the posterior
+    probability that ctx came from Background — a measured quantity, not
+    a hand-tuned threshold.
+
+    Stateless in the sense that the mixture posterior is computed fresh
+    per call from a sliding evidence window over the last
+    `evidence_window` bytes of ctx. The inner `Library` carries all the
+    long-term training; Toplevel only mediates "is this input in the
+    distribution we trained on?"
+
+    KN's continuation-distribution base case (the V3 regression) doesn't
+    matter here: on OOD, KN gives confidently-wrong predictions with
+    low likelihood on the actual byte. Background's `1/vocab_size`
+    becomes higher than KN's likelihood for OOD bytes, so the posterior
+    shifts to Background as evidence accumulates.
+    """
+    def __init__(self, in_dist: "Library", vocab_size: int = 256,
+                 evidence_window: int = 32, prior_log_in: float = 0.0,
+                 prior_log_bg: float = 0.0):
+        self.in_dist = in_dist
+        self.vocab_size = vocab_size
+        self.evidence_window = evidence_window
+        self.background = UniformPrimitive(vocab_size)
+        self.prior_log_in = prior_log_in
+        self.prior_log_bg = prior_log_bg
+
+    @property
+    def programs(self):
+        return self.in_dist.programs
+
+    @property
+    def log_weights(self):
+        return self.in_dist.log_weights
+
+    def _accumulate_evidence(self, ctx: bytes) -> tuple[float, float]:
+        """Walk the last `evidence_window` bytes, accumulating log-likelihood
+        of each observed byte under in_dist vs Background. Returns
+        (log_w_in, log_w_bg) including the priors.
+        """
+        window = ctx[-self.evidence_window:] if ctx else b""
+        log_w_in = self.prior_log_in
+        log_w_bg = self.prior_log_bg
+        bg_prob = 1.0 / max(self.vocab_size, 1)
+        log_bg_per = math.log(bg_prob)
+        for i in range(1, len(window)):
+            sub = window[:i]
+            actual = window[i]
+            dist = self.in_dist.predict(sub)
+            total = sum(dist.values()) or 1.0
+            p_in = max(dist.get(actual, 0.0) / total, 1e-12)
+            log_w_in += math.log(p_in)
+            log_w_bg += log_bg_per
+        return log_w_in, log_w_bg
+
+    def _mixture_weights(self, ctx: bytes) -> tuple[float, float]:
+        log_w_in, log_w_bg = self._accumulate_evidence(ctx)
+        m = max(log_w_in, log_w_bg)
+        e_in = math.exp(log_w_in - m)
+        e_bg = math.exp(log_w_bg - m)
+        z = e_in + e_bg
+        return e_in / z, e_bg / z
+
+    def predict(self, ctx: bytes) -> Counter:
+        w_in, w_bg = self._mixture_weights(ctx)
+        p_in = self.in_dist.predict(ctx)
+        total_in = sum(p_in.values()) or 1.0
+        bg_per = 1.0 / max(self.vocab_size, 1)
+        out = Counter()
+        for k in range(self.vocab_size):
+            out[k] = w_in * (p_in.get(k, 0.01) / total_in) + w_bg * bg_per
+        return out
+
+    def refusal_score(self, ctx: bytes) -> float:
+        """P(Background | ctx). High = "this input doesn't look like training";
+        used as the architectural refusal probability. Default τ = 0.5.
+        """
+        _, w_bg = self._mixture_weights(ctx)
+        return w_bg
+
+    def update(self, ctx: bytes, actual: int, lr: float = 0.03):
+        """Delegate per-program Bayesian update to the inner Library. The
+        Toplevel itself is stateless across training — the mixture is
+        re-computed per prediction from sliding-window evidence.
+        """
+        self.in_dist.update(ctx, actual, lr=lr)
+
+    def decay(self, factor: float = 0.99):
+        self.in_dist.decay(factor=factor)
+
+    def replay(self, buffer, lr: float = 0.03):
+        self.in_dist.replay(buffer, lr=lr)
+
+    def grow(self, n_children: int = 4):
+        return self.in_dist.grow(n_children=n_children)
+
+    def prune(self, max_size: int = 200):
+        return self.in_dist.prune(max_size=max_size)
+
+    def abstract_phase(self, **kwargs):
+        return self.in_dist.abstract_phase(**kwargs)
+
+    def top_programs(self, k: int = 8):
+        return self.in_dist.top_programs(k=k)
+
+    def posterior(self):
+        return self.in_dist.posterior()
+
+    def entropy(self, ctx: bytes) -> float:
+        return self.in_dist.entropy(ctx)
+
+
+def fresh_library(rich: bool = True, toplevel: bool = False,
+                  vocab_size: int = 256):
     """Seed library with primitives.
 
     With rich=True (default since V3), also adds Kneser-Ney n-grams and a
     skip-gram predictor — primitives that capture stronger statistical
     structure than plain add-k n-grams. Set rich=False for the V1/V2
     baseline behaviour.
+
+    With toplevel=True (V10+), wraps the Library in a Toplevel Bayesian
+    mixture against a UniformPrimitive Background; refusal becomes a
+    measured posterior probability, not an entropy threshold.
     """
     lib = Library()
-    lib.add(UniformPrimitive())
+    lib.add(UniformPrimitive(vocab_size=vocab_size))
     lib.add(RepeatPrimitive())
     for n in (1, 2, 3, 4, 5, 6):
         lib.add(NGramPrimitive(n))
@@ -582,4 +708,6 @@ def fresh_library(rich: bool = True) -> Library:
             lib.add(KneserNeyNGram(n))
         lib.add(SkipGramPredictor(k=2, depth=3))
         lib.add(SkipGramPredictor(k=3, depth=3))
+    if toplevel:
+        return Toplevel(lib, vocab_size=vocab_size)
     return lib

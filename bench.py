@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 from engine import (
-    Library, NGramPrimitive,
+    Library, NGramPrimitive, Toplevel,
     fresh_library, load_library, save_library,
 )
 
@@ -115,19 +115,27 @@ def ece(lib: Library, data: bytes, n_bins: int = 10,
     return weighted_err, breakdown
 
 
-def refusal_rate(lib: Library, data: bytes,
+def refusal_rate(lib, data: bytes,
                  entropy_thresh: float = 7.0,
                  ctx_window: int = CTX_WINDOW) -> float:
-    """Fraction of positions where the library's entropy on the prefix
-    exceeds the threshold (i.e., the library would refuse to answer)."""
+    """Fraction of positions where the library would refuse to answer.
+
+    With a `Toplevel`-wrapped library (V10+), uses the architectural
+    refusal invariant: `refusal_score(ctx) > 0.5`. With a bare `Library`
+    (pre-V10), falls back to the V1 entropy threshold heuristic.
+    """
     refused = 0
     n = 0
+    is_toplevel = isinstance(lib, Toplevel)
     for i in range(1, len(data)):
         ctx = data[max(0, i - ctx_window):i]
-        h = lib.entropy(ctx)
         n += 1
-        if h > entropy_thresh:
-            refused += 1
+        if is_toplevel:
+            if lib.refusal_score(ctx) > 0.5:
+                refused += 1
+        else:
+            if lib.entropy(ctx) > entropy_thresh:
+                refused += 1
     return refused / max(n, 1)
 
 
@@ -228,13 +236,19 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", action="store_true",
                     help="persist the fitted library to .rce_library.pkl")
+    ap.add_argument("--save-path", default=None,
+                    help="override the save path (default: .rce_library.pkl)")
+    ap.add_argument("--toplevel", action="store_true",
+                    help="V10: wrap the library in a Toplevel Bayesian mixture "
+                         "with a UniformPrimitive Background. Refusal becomes "
+                         "P(Background|ctx) > 0.5 instead of the V1 entropy gate.")
     args = ap.parse_args()
 
     random.seed(args.seed)
     _ensure_data()
 
     if args.train or args.bayes_train > 0 or not MODEL_PATH.exists():
-        lib = fresh_library()
+        lib = fresh_library(toplevel=args.toplevel)
         train_bytes = WIKITEXT_TRAIN.read_bytes()
         print(f"fitting primitives on {len(train_bytes):,} train bytes...")
         fit_primitives(lib, train_bytes)
@@ -251,7 +265,9 @@ def main():
             )
             print(f"  done: {steps} update steps; |lib|={len(lib.programs)}")
         if args.save:
-            save_library(lib, str(MODEL_PATH))
+            save_target = args.save_path or str(MODEL_PATH)
+            save_library(lib, save_target)
+            print(f"  saved to {save_target}")
     else:
         lib = load_library(str(MODEL_PATH)) or fresh_library()
 
