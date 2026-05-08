@@ -1,7 +1,7 @@
 {
-  "version": 4,
-  "stage": "DESIGN",
-  "iteration": 3,
+  "version": 7,
+  "stage": "RUN",
+  "iteration": 6,
   "last_gate": "pass",
   "started_at": "2026-05-06",
   "tokenization": "word",
@@ -13,15 +13,24 @@
   },
   "v1_trained_baseline_bpb": 2.6209,
   "v3_trained_bpb": 2.3735,
+  "v4_trained_bpb": 2.4297,
+  "v5_trained_bpb": 2.4297,
+  "v6_streaming_throughput_KBs": 883.8,
   "engine_optimizations": [
     "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan",
-    "2026-05-07: V3 added KneserNeyNGram(3,4,5) and SkipGramPredictor(2x3, 3x3); BPB 9.4% better than V1 trained"
+    "2026-05-07: V3 added KneserNeyNGram(3,4,5) and SkipGramPredictor(2x3, 3x3); BPB 9.4% better than V1 trained",
+    "2026-05-07: V4 added Gated/Memoized/Mixed combinators (gate ✓ memo×8 in top-20)",
+    "2026-05-07: V5 wired abstract_phase into bayes_train (gate ✓ but 0 lifts due to mode collapse)",
+    "2026-05-07: V7 added Library.decay() and Library.replay() + bench flags"
   ],
   "open_findings": [
-    "V3 broke V1's refusal-rate metric (KN's continuation base ≈ unigram freq, not uniform). Address at V10."
+    "V3 broke V1 refusal-rate (KN continuation base ≈ unigram, not uniform). Address at V10.",
+    "V4-V5 mode collapse: posterior fully on kn-5. V7 decay+replay should fix.",
+    "V5 abstraction needs diverse posterior — re-test after V7."
   ],
   "deferred": [
-    "SuffixArrayPredictor (V3 spec); LZWPredictor (V3 spec) — added if KN/skip plateau",
-    "Engine vocab refactor for word tokenization (V2 winner) — defer to V6 when scale matters"
+    "SuffixArrayPredictor / LZWPredictor (V3 spec) — added if KN/skip plateau",
+    "Engine vocab refactor for word tokenization — defer to V6/V8 when scale matters",
+    "Full LMDB migration (storage.md) — defer to V8 alongside Modal"
   ]
 }

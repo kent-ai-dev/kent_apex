@@ -208,3 +208,38 @@ in state.json. Until V7 the per-version BPB numbers reflect "the
 single program the posterior collapsed on" plus a small noise floor.
 
 **State advance**: V4 → V5.
+
+---
+
+## 2026-05-07 — V5: wake-sleep abstraction
+
+Implemented `Library.abstract_phase()` per spec:
+- Scan top-50 programs by posterior weight
+- Walk each program's lineage (parents, grandparents, …) collecting
+  ancestor names
+- Any ancestor whose name appears in ≥3 of the top-50 programs gets
+  lifted into a Memoized wrapper marked `combinator='primitive'` so
+  `prune()` keeps it
+- Lengths discount by 4 bits to reflect the abstraction's value
+- Capped at 3 lifts per call to prevent library blowup
+
+Wired into `bayes_train` via `abstract_every_grows=5`.
+
+**Results** (30KB bayes-train, lib=139):
+- BPB     = 2.4297  (identical to V4)
+- ECE     = 0.0799  (identical)
+- refusal = 0.0000  (identical)
+- abstractions lifted: **0**
+
+The mode-collapse on `kn-5` (V4 finding) means top-50 is almost entirely
+direct children of `kn-5` (a primitive). With shallow lineage and a
+primitive root, no non-primitive ancestor reaches `min_count=3`.
+abstract_phase fires but lifts nothing.
+
+**Gate verdict**: PASS — library size 139 vs V4's 139 = 1.0× ratio,
+within the ≤2× gate. But the asymptote is from the existing prune cap,
+not from successful abstraction. Once V7's decay+replay restores
+posterior diversity, V5's abstraction should produce meaningful lifts.
+Flagged for post-V7 re-evaluation.
+
+**State advance**: V5 → V6.

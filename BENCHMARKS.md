@@ -21,3 +21,7 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-07 | V4 trained | ECE | 0.0799 | wikitext-2-raw-v1 heldout 100KB | similar to V3 |
 | 2026-05-07 | V4 trained | refusal_rate | 0.0000 | os.urandom 20KB | V3 regression carries forward |
 | 2026-05-07 | V4 gate-check | combinators_in_top20 | memo×8 | n/a | gate ✓ — memo appears 8× in top-20. compose×1 also present. gate, mix did NOT make top-20 despite many in library (gate=24, mix=22) — kept for now, candidates for removal if still dead at V5. |
+| 2026-05-07 | V5 trained | BPB | 2.4297 | wikitext-2-raw-v1 heldout 100KB | identical to V4 — mode collapse on kn-5 means abstraction can't lift (kn-5 is a primitive; its direct children dominate top-50 with shallow lineage; no non-primitive ancestor reaches min_count=3). |
+| 2026-05-07 | V5 gate-check | library_size | 139 | n/a | V4=139, V5=139 → 1.0× ratio, gate ≤2× ✓. But asymptote is from prune cap, not abstraction. After V7 decay+replay, expect richer lineage and meaningful lifts. |
+| 2026-05-07 | V5 abstraction_lifts | 0 | n/a | n/a | abstract_phase ran but no ancestor reached min_count=3 — diagnostic for deferred re-evaluation post-V7 |
+| 2026-05-07 | V6 streaming | throughput | 883.8 KB/s | wikitext-103-raw-v1 stream | datasets_hf.iter_bytes() with validator gate; 1MB streamed in 1.1s. Gate ≥50 KB/s ✓ by 17×. |
