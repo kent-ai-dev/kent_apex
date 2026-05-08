@@ -40,3 +40,7 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-08 | V7+V10 stack | refusal English | 0.0000 | hand-crafted text | Toplevel on V7 lib: English in-distribution ✓ |
 | 2026-05-08 | V7+V10 stack | refusal os.urandom | 1.0000 | os.urandom 96B | **V3 silent regression fully repaired** ✓ |
 | 2026-05-08 | V7+V10 stack | refusal Cyrillic | 0.9930 | UTF-8 Cyrillic 64B | foreign-script OOD detected without special-casing ✓ |
+| 2026-05-08 | V8 real Modal | wall-clock | 94.1s | 4 workers × 8KB | sequential dry-run 584s → 6.2× speedup; 133 unique merged programs; 23 in ≥2 shards. https://modal.com/apps/kent-ai-dev/main/ap-ybdtrJ7Gu51L7VyNaSLEfO |
+| 2026-05-08 | V11 vs V7 lib | LAMBADA per-byte log2p | -3.84 | EleutherAI/lambada_openai 30 ex | was -5.17 with chat lib; +1.33 bits/byte improvement |
+| 2026-05-08 | V11 vs V7 lib | HellaSwag accuracy | 0.233 | Rowan/hellaswag 30 ex | was 0.15; back near random 0.25 (no longer anti-correlated) |
+| 2026-05-08 | V11 vs V7 lib | WikiText-103 BPB | **2.194** | wikitext-103-raw-v1 validation 20KB | was 3.41 with chat lib; -36%. **V9 gate ≤2.5 ALREADY MET** by V7+V10 trained on wikitext-2 alone |
