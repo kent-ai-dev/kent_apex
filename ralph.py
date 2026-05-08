@@ -37,12 +37,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-# anthropic is the only external dep
+# anthropic is the only external dep at runtime; import lazily so the
+# prompt-builder and other helpers can be unit-tested without it.
 try:
     import anthropic
 except ImportError:
-    print("install: pip install anthropic")
-    sys.exit(1)
+    anthropic = None  # main() will check before any API call
 
 
 # ---------- config ----------
@@ -119,16 +119,34 @@ def append_bench(workspace: Path, rows: list[dict]):
 # ---------- file gathering ----------
 
 def read_workspace_context(workspace: Path) -> dict[str, str]:
-    """Read the canonical files Claude needs each iteration."""
+    """Read the canonical files Claude needs each iteration.
+
+    Per `plans/v2.md` §5.1: the reading list is now v1.md, v2.md, RESULTS.md,
+    LOG.md, BENCHMARKS.md, plus the code (engine.py, rce.py) and storage
+    plan (storage.md). RESULTS.md is the V20 deliverable that v2 branches
+    on (§6) — load it once it exists so v2x iterations can read the regime.
+    """
     files = {}
-    for name in ["PLAN.md", "LOG.md", "BENCHMARKS.md", "state.json",
-                 "engine.py", "rce.py"]:
+    canonical = [
+        "plans/v1.md",
+        "plans/v2.md",
+        "plans/storage.md",
+        "RESULTS.md",
+        "LOG.md",
+        "BENCHMARKS.md",
+        "state.json",
+        "engine.py",
+        "rce.py",
+        # back-compat: ralph workspaces seeded by v1's bootstrap copied
+        # plans/v1.md to PLAN.md. Read it if present, ignore otherwise.
+        "PLAN.md",
+    ]
+    for name in canonical:
         p = workspace / name
         if p.exists():
             files[name] = p.read_text()
         else:
             files[name] = "(file not present yet)"
-    # also list any V{version}-related files
     state = read_state(workspace)
     v = state["version"]
     pattern = f"v{v}_"
@@ -154,6 +172,20 @@ def build_prompt(workspace: Path, state: dict, files: dict[str, str]) -> str:
             content = "...(truncated)...\n" + content[-8000:]
         file_section += f"\n### FILE: {name}\n```\n{content}\n```\n"
 
+    v_num = state.get('version', 1)
+    plan_section = "plans/v2.md" if v_num >= 21 else "plans/v1.md"
+
+    # Auto-escalation: theorem versions (V29) require human researchers
+    # per plans/v2.md §5.3; the engineer must not advance V29 unattended.
+    v29_escalate_clause = (
+        f"\n\n**V29 escalation rule** (plans/v2.md §5.3): V29 is a theory "
+        f"deliverable — write a PROPOSAL block in LOG.md describing the "
+        f"empirical claims you would test, then stop with "
+        f"'{ESCALATE_TOKEN}: V29 requires human researcher'. Do not "
+        f"author V29 content yourself."
+        if v_num == 29 else ""
+    )
+
     prompt = f"""You are Claude, acting as the engineer in a Ralph loop training the RCE.
 
 CURRENT STATE:
@@ -162,19 +194,34 @@ CURRENT STATE:
 - Iteration: {state['iteration']}
 - Last gate result: {state['last_gate']}
 - Hours since last human review: {hours_since_review:.1f}
+- Active plan section: {plan_section}
 
-YOUR TASK THIS ITERATION (per PLAN.md §5):
+YOUR TASK THIS ITERATION (per {plan_section} §5):
 
-Read the workspace files below. Determine the current stage of V{state['version']}.
-Choose ONE focused next action. Output the response in the structured format
-defined in PLAN.md §5: STATE_ASSESSMENT, NEXT_ACTION, EXPECTED_OUTCOME,
-UPDATE_LOG, UPDATE_BENCHMARKS.
+Read the workspace files below in this order: plans/v1.md (architectural
+philosophy and V1-V20 spec), plans/v2.md (V21-V30 with corrections from
+V1-V20 lessons), plans/storage.md (tier system and migration triggers),
+RESULTS.md (V20 deliverable — only present once V20 lands; once it
+exists, plans/v2.md §6 selects which v2 branch to follow), LOG.md
+(running journal), BENCHMARKS.md (running ledger), engine.py and rce.py
+(current code).
+
+Determine the current stage of V{state['version']}. Choose ONE focused
+next action. Output in the structured format defined in {plan_section} §5:
+STATE_ASSESSMENT, NEXT_ACTION, EXPECTED_OUTCOME, UPDATE_LOG, UPDATE_BENCHMARKS.
+
+**Honesty checklist** (plans/v2.md §4): before writing UPDATE_LOG, answer
+explicitly: (1) did the change produce the predicted effect, or did
+something else change? (2) are the architectural invariants intact —
+refusal (V21), posterior diversity (V22), audit trail? (3) is the LOG
+entry honest about what failed? Gate-passed-with-caveats triggers a
+LOG note and a brief human-review request, not an automatic advance.
 
 Use the available tools (str_replace, create_file, bash) to perform the action.
 
 If you believe a gate has been failed twice or you need human input, write
 "{ESCALATE_TOKEN}: <reason>" prominently in your UPDATE_LOG and stop without
-performing further actions.
+performing further actions.{v29_escalate_clause}
 
 If hours_since_human_review is high or you've completed a major version,
 write "{PAUSE_TOKEN}: <reason>" in your UPDATE_LOG to request review.
@@ -409,6 +456,9 @@ def main():
                     help="build the prompt and print it; do not call the API")
     args = ap.parse_args()
 
+    if not args.dry_run and anthropic is None:
+        print("ERROR: anthropic SDK not installed; pip install anthropic")
+        sys.exit(1)
     if not args.api_key and not args.dry_run:
         print("ERROR: set ANTHROPIC_API_KEY or pass --api-key (or use --dry-run)")
         sys.exit(1)
