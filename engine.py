@@ -374,6 +374,22 @@ class Library:
             self.log_weights[p.name] += lr * math.log(prob)
         self._renormalize()
 
+    def decay(self, factor: float = 0.99):
+        """V7: shrink all log-weights toward zero so the posterior stays
+        responsive to non-stationary data and doesn't astronomically
+        concentrate on one program. Call every ~N bytes during training.
+        """
+        for k in self.log_weights:
+            self.log_weights[k] *= factor
+
+    def replay(self, buffer: list[tuple[bytes, int]], lr: float = 0.03):
+        """V7: re-run Bayesian updates on a sample of past (ctx, actual)
+        pairs. Counters catastrophic forgetting when training on shifting
+        distributions and gives early-formed programs a chance to recover.
+        """
+        for ctx, actual in buffer:
+            self.update(ctx, actual, lr=lr)
+
     def _renormalize(self):
         # subtract max for numerical stability; this doesn't change the posterior
         m = max(self.log_weights.values())

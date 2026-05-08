@@ -148,16 +148,21 @@ def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,
                 update_every: int = 4, grow_every_steps: int = 200,
                 max_lib_size: int = 150, n_children: int = 4,
                 progress_every: int | None = None,
-                abstract_every_grows: int = 5) -> int:
+                abstract_every_grows: int = 5,
+                decay_every_steps: int = 0, decay_factor: float = 0.99,
+                replay_buffer_size: int = 0,
+                replay_every_grows: int = 1, replay_sample: int = 256) -> int:
     """Run the Bayesian-update + grow + prune + abstract phase.
 
     `abstract_every_grows`: every Nth grow phase, also run
     `lib.abstract_phase()` to lift recurring sub-programs into Memoized
     primitives (V5 wake-sleep step). Set to 0 to disable.
     """
+    import random as _r
     step = 0
     grow_phase = 0
     abstractions: list[str] = []
+    replay_buffer: list[tuple[bytes, int]] = []
     for i in range(1, len(train)):
         if i % update_every != 0:
             continue
@@ -165,16 +170,38 @@ def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,
         actual = train[i]
         lib.update(ctx, actual)
         step += 1
+
+        # V7: maintain a reservoir-style replay buffer
+        if replay_buffer_size > 0:
+            if len(replay_buffer) < replay_buffer_size:
+                replay_buffer.append((ctx, actual))
+            else:
+                # uniform-random replacement preserves a uniform sample of past
+                j = _r.randint(0, step - 1)
+                if j < replay_buffer_size:
+                    replay_buffer[j] = (ctx, actual)
+
+        # V7: posterior decay every N steps
+        if decay_every_steps > 0 and step % decay_every_steps == 0:
+            lib.decay(factor=decay_factor)
+
         if step % grow_every_steps == 0:
             lib.grow(n_children=n_children)
             grow_phase += 1
+            # V5 abstraction
             if abstract_every_grows and grow_phase % abstract_every_grows == 0:
                 lifted = lib.abstract_phase(scan_top=50, min_count=3, max_lift=2)
                 abstractions.extend(p.name for p in lifted)
+            # V7 replay
+            if replay_buffer and replay_every_grows and grow_phase % replay_every_grows == 0:
+                sample = _r.sample(replay_buffer,
+                                    min(replay_sample, len(replay_buffer)))
+                lib.replay(sample)
             lib.prune(max_size=max_lib_size)
             if progress_every and step % progress_every == 0:
                 print(f"  bayes-train step {step}: |lib|={len(lib.programs)}"
-                      + (f"  +abstract={len(abstractions)}" if abstractions else ""))
+                      + (f"  +abstract={len(abstractions)}" if abstractions else "")
+                      + (f"  buf={len(replay_buffer)}" if replay_buffer else ""))
     lib.grow(n_children=n_children * 2)
     if abstract_every_grows:
         lib.abstract_phase(scan_top=50, min_count=3, max_lift=3)
@@ -189,6 +216,14 @@ def main():
     ap.add_argument("--bayes-train", type=int, default=0, metavar="BYTES",
                     help="after fitting n-grams, run Bayesian-update + grow/prune "
                          "over the first BYTES of train data (mirrors rce.py train)")
+    ap.add_argument("--decay-every", type=int, default=0,
+                    help="V7: shrink log-weights by --decay-factor every N steps")
+    ap.add_argument("--decay-factor", type=float, default=0.99,
+                    help="multiplicative decay on log-weights (default 0.99)")
+    ap.add_argument("--replay-buffer", type=int, default=0,
+                    help="V7: maintain a reservoir replay buffer of N past (ctx,actual)")
+    ap.add_argument("--replay-sample", type=int, default=256,
+                    help="V7: sample size from the replay buffer per grow phase")
     ap.add_argument("--metric", choices=["bpb", "ece", "refuse", "all"], default="all")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", action="store_true",
@@ -205,8 +240,15 @@ def main():
         fit_primitives(lib, train_bytes)
         if args.bayes_train > 0:
             slice_bytes = train_bytes[:args.bayes_train]
-            print(f"bayes-train over {len(slice_bytes):,} bytes...")
-            steps = bayes_train(lib, slice_bytes, progress_every=2000)
+            print(f"bayes-train over {len(slice_bytes):,} bytes "
+                  f"(decay_every={args.decay_every}, replay_buf={args.replay_buffer})...")
+            steps = bayes_train(
+                lib, slice_bytes, progress_every=2000,
+                decay_every_steps=args.decay_every,
+                decay_factor=args.decay_factor,
+                replay_buffer_size=args.replay_buffer,
+                replay_sample=args.replay_sample,
+            )
             print(f"  done: {steps} update steps; |lib|={len(lib.programs)}")
         if args.save:
             save_library(lib, str(MODEL_PATH))
