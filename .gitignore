@@ -16,3 +16,8 @@ v8_merged.pkl
 v9_*_merged.pkl
 v9_slimpajama*.pkl
 .rce_library_v*.pkl
+coherence_*.json
+v8_merge_result.json
+v9_*_merged.pkl
+v11_results.json
+v2_tokenization_sweep.json
