@@ -44,3 +44,9 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-08 | V11 vs V7 lib | LAMBADA per-byte log2p | -3.84 | EleutherAI/lambada_openai 30 ex | was -5.17 with chat lib; +1.33 bits/byte improvement |
 | 2026-05-08 | V11 vs V7 lib | HellaSwag accuracy | 0.233 | Rowan/hellaswag 30 ex | was 0.15; back near random 0.25 (no longer anti-correlated) |
 | 2026-05-08 | V11 vs V7 lib | WikiText-103 BPB | **2.194** | wikitext-103-raw-v1 validation 20KB | was 3.41 with chat lib; -36%. **V9 gate ≤2.5 ALREADY MET** by V7+V10 trained on wikitext-2 alone |
+| 2026-05-08 | V9 attempt 1 | failure | timeout | monology/pile-uncopyrighted | Modal workers hit FileNotFoundError on zst-streaming path even with zstandard installed (datasets+fsspec version skew in Modal image). Pivoted dataset. |
+| 2026-05-09 | V9 attempt 2 | partial | timeout | DKYoon/SlimPajama-6B, 16 × 10MB | Some Modal workers exceeded the 7200s function timeout — likely KN-fit on 10MB of mixed prose was unexpectedly slow on some shards. Retrying with 32 × 1MB shards. |
+| 2026-05-09 | V12 trained | text BPB | 1.0143 | allenai/c4 en stream (SUSPICIOUS) | per_domain_bpb restarts the stream so eval bytes overlap heavily with training bytes — this is closer to train BPB than held-out BPB. Honest finding: V12's measurement methodology needs a proper held-out split before this number can be trusted. |
+| 2026-05-09 | V12 trained | code BPB | 0.6679 | code_search_net python (SUSPICIOUS) | same caveat as text |
+| 2026-05-09 | V12 trained | structured BPB | NaN | wikidata5m | numerical issue (likely division by zero when stream has no usable bytes after wikidata5m's WARN-level signal) |
+| 2026-05-09 | V12 lib | n_programs | 100 | cross-domain mix, 20K bayes-train | mode collapse persists despite decay (kn-5 weight 0.9984) — decay-factor 0.99 every 500 steps too gentle for cross-domain training where one general predictor (kn-5) dominates. v2.md V22 addresses this structurally. |
