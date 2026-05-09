@@ -373,12 +373,24 @@ class Library:
     def update(self, ctx: bytes, actual: int, lr: float = 0.03):
         """Bayesian update: programs that predicted `actual` better gain weight.
         lr < 1 softens the posterior so a few programs don't dominate everything.
+
+        V16: if a provenance.default_store has been initialised, deltas above
+        its threshold are recorded — append-only, per program. Survives
+        program pruning so we always know what shaped the high-weight programs.
         """
+        try:
+            from provenance import default_store as _prov_store
+        except Exception:
+            _prov_store = None
+
         for p in self.programs:
             dist = p.predict(ctx)
             total = sum(dist.values()) or 1.0
             prob = (dist.get(actual, 0.01) + 1e-9) / total
-            self.log_weights[p.name] += lr * math.log(prob)
+            delta = lr * math.log(prob)
+            self.log_weights[p.name] += delta
+            if _prov_store is not None:
+                _prov_store.record(p.name, ctx, delta)
         self._renormalize()
 
     def decay(self, factor: float = 0.99):

@@ -10,3 +10,9 @@ __pycache__/
 .venv/
 venv/
 .modal/
+provenance/
+fed_*.pkl.gz
+v8_merged.pkl
+v9_*_merged.pkl
+v9_slimpajama*.pkl
+.rce_library_v*.pkl

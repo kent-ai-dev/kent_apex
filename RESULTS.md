@@ -69,7 +69,7 @@ and a literal `UniformPrimitive` Background, which makes refusal a
 | V13| not impl | — | requires general program representation; multi-version refactor (deferred per v2.md §6) |
 | V14| ✓ | ✓ smoke-tested: OOD chunks yield first; high-BPB priority works | ✓ mechanism validated |
 | V15| ✓ code | ✓ ran on oasst1 (daily_dialog deprecated by HF, gracefully skipped); lib=43 | ✓ trained on dialog corpus |
-| V16| ✓ code | code in repo; not integrated into Library.update yet | not measured |
+| V16| ✓ | ✓ wired into Library.update — opt-in via provenance.init_default(shard); writes per-program JSONL with delta+ctx_preview+ts; smoke-tested with 21 program files written, kn-3 alone has 664 events traceable to specific contexts | ✓ |
 | V17| ✓ | ✓ federated V7+V12: 102 unique from 117 raw, 15 shared, prior-correction applied | ✓ federation works |
 | V18| ✓ skeleton | deployment intentionally manual — running unmoderated public chat needs human auth/rate-limit/content-filter setup | not deployed |
 | V19| ✓ | ✓ MNIST byte streams BPB **0.8632** (gate ≤6.5 ✓ by 7×; beats PNG ~4.0) | ✓ |
