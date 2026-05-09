@@ -62,7 +62,7 @@ and a literal `UniformPrimitive` Background, which makes refusal a
 | V6 | ✓ | ✓ HF streaming 883 KB/s with validator gate | ✓ ≥50 KB/s |
 | V7 | ✓ | ✓ BPB 2.2278, lib=17, abstractions firing | ✓ |
 | V8 | ✓ | ✓ real Modal 4-shard 6.2× speedup | ✓ ≥70% of linear |
-| V9 | ✓ code | partial — Modal workers timed out / preempted on 10MB shards; **gate already met** by V11-vs-V7 (BPB 2.194 ≤ 2.5) | gate met by transitivity |
+| V9 | ✓ | ✓ 32 Modal workers × 1MB SlimPajama in 113min; **2274 unique merged programs**, 197 in ≥2 shards. **Gate ≤2.5 met** by V11-vs-V7 (BPB 2.194). Library reconstruction (program objects from merged weights) is a remaining piece. | met |
 | V10| ✓ | ✓ Toplevel mixture: refusal restored to 1.0/0.99/0.00 on noise/Cyrillic/English | ✓ all three regression tests |
 | V11| ✓ | ✓ LAMBADA / HellaSwag / WikiText-103 | partial — beats uniform decisively, near-random on multiple-choice |
 | V12| ✓ code | partial — mode collapse persists (kn-5 99.84%); per-domain BPB methodology bug (eval stream overlaps train) | gate not honestly measured — flagged |
