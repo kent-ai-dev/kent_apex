@@ -72,7 +72,7 @@ and a literal `UniformPrimitive` Background, which makes refusal a
 | V16| ✓ code | code in repo; not integrated into Library.update yet | not measured |
 | V17| ✓ | ✓ federated V7+V12: 102 unique from 117 raw, 15 shared, prior-correction applied | ✓ federation works |
 | V18| ✓ skeleton | deployment intentionally manual — running unmoderated public chat needs human auth/rate-limit/content-filter setup | not deployed |
-| V19| ✓ code | not run — would train on MNIST byte streams; gate BPB ≤ 6.5 | not run |
+| V19| ✓ | ✓ MNIST byte streams BPB **0.8632** (gate ≤6.5 ✓ by 7×; beats PNG ~4.0) | ✓ |
 | V20| ✓ this | this report | the deliverable |
 
 ---
@@ -164,6 +164,26 @@ trained on wikitext-2 alone** (BPB 2.194), so the architecture is
 clearly capable; the open question is whether *more training data*
 would push BPB further down on wikitext-103, which we couldn't measure
 because of Modal infrastructure issues.
+
+**Generated text is incoherent.** 80-byte sampled continuations:
+
+- V7 (wikitext, 17 programs):
+  `"The cat sat on"` → `"the gold dollar would repeated the 2008"`
+  `"Once upon a time"` → `". The album . For nineteenth and the first half"`
+- V12 (cross-domain, 100 programs, mode-collapsed):
+  `"def factorial(n):"` → `" # , pyed):"` (code-like fragment)
+  `"When you ask"` → `"= (seeds_mask] = 0"`
+- V15 (oasst1, 43 programs, multilingual):
+  Spanish-English interleaved fragments — picked up oasst1's multilingual
+  composition without learning when each language fits.
+
+These are byte-level n-gram outputs: locally fluent (real bigrams,
+real trigrams), zero longer-range coherence. The library compresses
+text well (V7 BPB 2.23) but can't *generate* text in any
+human-meaningful sense. v2.md V25 (LLM-as-primitive) is the response
+when this matters; for v2.md V30's calibrated-refusal narrow-domain
+product, it doesn't — the product *is* "I don't know" with a measured
+confidence, not fluent generation.
 
 **HellaSwag is no longer below random but is only at random.**
 V11 against V7's library hit accuracy 0.233 on HellaSwag (random
