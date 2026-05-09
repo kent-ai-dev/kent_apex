@@ -59,3 +59,6 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-09 | V12 honest BPB text | 3.4416 | c4 en, skip 50K, take 3K | per_domain_bpb fixed: skip past training bytes. **FAILS V12 gate** (≤1.2× V7's 2.23 = 2.67 ceiling) by 30% |
 | 2026-05-09 | V12 honest BPB code | 4.2055 | code_search_net python, skip 50K, take 3K | no single-domain code baseline to compare; absolute number is poor. Mode collapse + cross-domain combine badly. |
 | 2026-05-09 | V12 verdict | **gate fails honestly** | — | — | The 1.01 / 0.67 numbers in the prior row were the measurement bug; the corrected numbers fail the gate. v2.md V22 (posterior diversity) + V23 (hierarchical library) are the structural fixes. |
+| 2026-05-09 | V7 baseline coherence | balanced_acc | 0.9286 | wikitext-2 | refusal 0.929, ASCII 1.000, wordlist 0.466; library=.rce_library_v7.pkl; gate=PASS |
+| 2026-05-09 | V12 baseline coherence | balanced_acc | 1.0000 | cross-domain | refusal 1.000, ASCII 1.000, wordlist 0.375; library=.rce_library_v12.pkl; gate=PASS |
+| 2026-05-09 | V15 baseline coherence | balanced_acc | 1.0000 | oasst1 | refusal 1.000, ASCII 1.000, wordlist 0.232; library=.rce_library_v15.pkl; gate=PASS |

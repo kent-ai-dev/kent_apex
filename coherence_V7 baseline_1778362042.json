@@ -1,0 +1,175 @@
+{
+  "ts": "2026-05-09T21:25:06+00:00",
+  "library": ".rce_library_v7.pkl",
+  "library_size": 17,
+  "tau": 0.5,
+  "refusal": {
+    "tau": 0.5,
+    "indist_accept_rate": 1.0,
+    "ood_reject_rate": 0.8571,
+    "balanced_accuracy": 0.9286,
+    "indist_scores": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ood_scores": [
+      1.0,
+      0.0,
+      0.9996,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "generation": {
+    "samples": [
+      {
+        "prompt": "The quick brown fox",
+        "gen": "onium halides SbF \n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 3,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "The quick brown fox",
+        "gen": " service , and November of department with the mor",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "In the beginning was the",
+        "gen": " dispatch of the press photography . \" On the prop",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "In the beginning was the",
+        "gen": " succession . On the story and representatively to",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 7,
+        "wordlist_hit_frac": 0.5714
+      },
+      {
+        "prompt": "She walked into the room and",
+        "gen": " the site the consisted that the latter replaced d",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "She walked into the room and",
+        "gen": " was best reported from the first promising a coll",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "def factorial(n):\n    return ",
+        "gen": "to the rank of constructures of the ship of a 3 \ufffd",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.6667
+      },
+      {
+        "prompt": "def factorial(n):\n    return ",
+        "gen": "to the series ( 13 mm ) of final book , as a fligh",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.4444
+      },
+      {
+        "prompt": "Once upon a time, in a land far",
+        "gen": " more depicting the same time . After that the adv",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.5556
+      },
+      {
+        "prompt": "Once upon a time, in a land far",
+        "gen": " @-@ the type special against the ships that the s",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "The president of the United States",
+        "gen": " in the strength . \n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 3,
+        "wordlist_hit_frac": 0.6667
+      },
+      {
+        "prompt": "The president of the United States",
+        "gen": " . \n = = = \n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 0,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "To be or not to be, that is",
+        "gen": " divine hole in a shooting the result of the Ameri",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.4444
+      },
+      {
+        "prompt": "To be or not to be, that is",
+        "gen": " compound described as falcons , and was shown on ",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "Computer science is the study of",
+        "gen": " the Institutions that was also known as an uplift",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.6667
+      },
+      {
+        "prompt": "Computer science is the study of",
+        "gen": " the forms , the areas of the week , along reached",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.4444
+      }
+    ],
+    "means": {
+      "ascii_printable_frac": 1.0,
+      "wordlist_hit_frac": 0.4663,
+      "n_words": 7.1875
+    }
+  },
+  "gate": {
+    "refusal_balanced_accuracy": 0.9286,
+    "refusal_ge_0_85": true,
+    "ascii_printable_frac": 1.0,
+    "ascii_printable_ge_0_80": true,
+    "PASS": true
+  }
+}

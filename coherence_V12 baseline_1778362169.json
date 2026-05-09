@@ -1,0 +1,175 @@
+{
+  "ts": "2026-05-09T21:27:24+00:00",
+  "library": ".rce_library_v12.pkl",
+  "library_size": 100,
+  "tau": 0.5,
+  "refusal": {
+    "tau": 0.5,
+    "indist_accept_rate": 1.0,
+    "ood_reject_rate": 1.0,
+    "balanced_accuracy": 1.0,
+    "indist_scores": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ood_scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "generation": {
+    "samples": [
+      {
+        "prompt": "The quick brown fox",
+        "gen": "elsize,\n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 1,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "The quick brown fox",
+        "gen": "els()\n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 1,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "In the beginning was the",
+        "gen": " concerns about the days when the traints, some me",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.6667
+      },
+      {
+        "prompt": "In the beginning was the",
+        "gen": " pan, and this set that the artic the experience i",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.5556
+      },
+      {
+        "prompt": "She walked into the room and",
+        "gen": " extermination multiscale_gc_hi2lo_run()\n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 6,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "She walked into the room and",
+        "gen": " hotels. I do not be and the are dishwasheet, a lo",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.6667
+      },
+      {
+        "prompt": "def factorial(n):\n    return ",
+        "gen": "values = [[0 1 2],\n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 1,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "def factorial(n):\n    return ",
+        "gen": "see Marketing to the same as it and the film only ",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 11,
+        "wordlist_hit_frac": 0.7273
+      },
+      {
+        "prompt": "Once upon a time, in a land far",
+        "gen": " as people non-stick bakeware is that the merger o",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.4444
+      },
+      {
+        "prompt": "Once upon a time, in a land far",
+        "gen": " as per prices will safe, however, the best big bo",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 10,
+        "wordlist_hit_frac": 0.3
+      },
+      {
+        "prompt": "The president of the United States",
+        "gen": "[linear_inds_small_in_orig==Foods = self._start_ti",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.1111
+      },
+      {
+        "prompt": "The president of the United States",
+        "gen": " of the basics 1 Day Extra and and dishes run_fit_",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 10,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "To be or not to be, that is",
+        "gen": " experience of it easily. The constraints and more",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "To be or not to be, that is",
+        "gen": " that all seed to smaller safe to get better than ",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 10,
+        "wordlist_hit_frac": 0.6
+      },
+      {
+        "prompt": "Computer science is the study of",
+        "gen": " the bod measures to finish_performaterialse] = 0\n",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 6,
+        "wordlist_hit_frac": 0.3333
+      },
+      {
+        "prompt": "Computer science is the study of",
+        "gen": " the article as its step is that everything the co",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 10,
+        "wordlist_hit_frac": 0.6
+      }
+    ],
+    "means": {
+      "ascii_printable_frac": 1.0,
+      "wordlist_hit_frac": 0.3753,
+      "n_words": 7.4375
+    }
+  },
+  "gate": {
+    "refusal_balanced_accuracy": 1.0,
+    "refusal_ge_0_85": true,
+    "ascii_printable_frac": 1.0,
+    "ascii_printable_ge_0_80": true,
+    "PASS": true
+  }
+}

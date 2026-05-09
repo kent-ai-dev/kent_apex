@@ -1,0 +1,175 @@
+{
+  "ts": "2026-05-09T21:29:30+00:00",
+  "library": ".rce_library_v15.pkl",
+  "library_size": 43,
+  "tau": 0.5,
+  "refusal": {
+    "tau": 0.5,
+    "indist_accept_rate": 1.0,
+    "ood_reject_rate": 1.0,
+    "balanced_accuracy": 1.0,
+    "indist_scores": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "ood_scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "generation": {
+    "samples": [
+      {
+        "prompt": "The quick brown fox",
+        "gen": "tra propional licensing reflexional licensing regu",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 6,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "The quick brown fox",
+        "gen": "t of labor markets can research has shown that the",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.5556
+      },
+      {
+        "prompt": "In the beginning was the",
+        "gen": " dynamics of labor market structure when the conoc",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.375
+      },
+      {
+        "prompt": "In the beginning was the",
+        "gen": " dynamiento l\u00f3gica para llegar a conceptos contex",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 6,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "She walked into the room and",
+        "gen": " increase caracterizar a particular industry optio",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 5,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "She walked into the room and",
+        "gen": " compleja y compensamiento de sus acciones context",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 6,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "def factorial(n):\n    return ",
+        "gen": "lower wages or ser un pensamiento suppress monopso",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.125
+      },
+      {
+        "prompt": "def factorial(n):\n    return ",
+        "gen": "lower over the same un mayor ni\u00f1os pueden avand t",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 10,
+        "wordlist_hit_frac": 0.2
+      },
+      {
+        "prompt": "Once upon a time, in a land far",
+        "gen": "ticular geographic arease the existencies to a sig",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 7,
+        "wordlist_hit_frac": 0.2857
+      },
+      {
+        "prompt": "Once upon a time, in a land far",
+        "gen": "ket structure where the exister wages and reduce t",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.25
+      },
+      {
+        "prompt": "The president of the United States",
+        "gen": " se existential monopsony power of workers. For ex",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.25
+      },
+      {
+        "prompt": "The president of the United States",
+        "gen": " ni\u00f1o de la etapas del desarrolla un pensamiento ",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 8,
+        "wordlist_hit_frac": 0.0
+      },
+      {
+        "prompt": "To be or not to be, that is",
+        "gen": " only one fights to address monopsonies in the cod",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.5556
+      },
+      {
+        "prompt": "To be or not to be, that is",
+        "gen": " only one employer in a concretas (7 a 12 a\u00f1os). ",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 6,
+        "wordlist_hit_frac": 0.5
+      },
+      {
+        "prompt": "Computer science is the study of",
+        "gen": " dominant employer has shown the con presentar a p",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 7,
+        "wordlist_hit_frac": 0.2857
+      },
+      {
+        "prompt": "Computer science is the study of",
+        "gen": " workers. For examples and the code few large las ",
+        "utf8_valid": true,
+        "ascii_printable_frac": 1.0,
+        "n_words": 9,
+        "wordlist_hit_frac": 0.3333
+      }
+    ],
+    "means": {
+      "ascii_printable_frac": 1.0,
+      "wordlist_hit_frac": 0.2322,
+      "n_words": 7.5
+    }
+  },
+  "gate": {
+    "refusal_balanced_accuracy": 1.0,
+    "refusal_ge_0_85": true,
+    "ascii_printable_frac": 1.0,
+    "ascii_printable_ge_0_80": true,
+    "PASS": true
+  }
+}
