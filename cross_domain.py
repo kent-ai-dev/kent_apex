@@ -97,13 +97,33 @@ def interleave_streams(plans: list[tuple[str, int]]) -> Iterator[bytes]:
             yield chunk
 
 
-def per_domain_bpb(lib, name: str, n_bytes: int = 30_000) -> float:
+def per_domain_bpb(lib, name: str, n_bytes: int = 30_000,
+                   skip_bytes: int = 100_000) -> float:
     """Pull a held-out slice from `name`'s dataset, prepend the tag byte,
-    compute BPB under the library."""
+    compute BPB under the library.
+
+    `skip_bytes` skips past the bytes the library was trained on so the
+    eval slice doesn't overlap training data — the V12 measurement bug
+    fix.
+    """
     from bench import bpb as _bpb
     buf = bytearray()
-    for chunk in stream_domain(name, n_bytes):
-        buf.extend(chunk)
+    skipped = 0
+    served = 0
+    for chunk in stream_domain(name, n_bytes + skip_bytes + 10000):
+        if skipped < skip_bytes:
+            need = skip_bytes - skipped
+            if len(chunk) <= need:
+                skipped += len(chunk)
+                continue
+            chunk = chunk[need:]
+            skipped = skip_bytes
+        if served >= n_bytes:
+            break
+        buf.extend(chunk[:n_bytes - served])
+        served += min(len(chunk), n_bytes - served)
+    if not buf:
+        return float("nan")
     return _bpb(lib, bytes(buf))
 
 

@@ -65,7 +65,7 @@ and a literal `UniformPrimitive` Background, which makes refusal a
 | V9 | ✓ | ✓ 32 Modal workers × 1MB SlimPajama in 113min; **2274 unique merged programs**, 197 in ≥2 shards. **Gate ≤2.5 met** by V11-vs-V7 (BPB 2.194). Library reconstruction (program objects from merged weights) is a remaining piece. | met |
 | V10| ✓ | ✓ Toplevel mixture: refusal restored to 1.0/0.99/0.00 on noise/Cyrillic/English | ✓ all three regression tests |
 | V11| ✓ | ✓ LAMBADA / HellaSwag / WikiText-103 | partial — beats uniform decisively, near-random on multiple-choice |
-| V12| ✓ code | partial — mode collapse persists (kn-5 99.84%); per-domain BPB methodology bug (eval stream overlaps train) | gate not honestly measured — flagged |
+| V12| ✓ | ✗ honestly fails — text BPB 3.44, code 4.21 with proper held-out (gate ≤2.67); mode collapse + cross-domain combine badly | **gate fails** — needs v2.md V22+V23 |
 | V13| not impl | — | requires general program representation; multi-version refactor (deferred per v2.md §6) |
 | V14| ✓ | ✓ smoke-tested: OOD chunks yield first; high-BPB priority works | ✓ mechanism validated |
 | V15| ✓ code | ✓ ran on oasst1 (daily_dialog deprecated by HF, gracefully skipped); lib=43 | ✓ trained on dialog corpus |
