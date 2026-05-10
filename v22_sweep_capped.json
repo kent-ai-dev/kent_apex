@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "T": 32.0,
+      "bpb_heldout": 2.3543,
+      "ess": 1.092,
+      "n_programs": 45,
+      "abstractions_lifted": 0,
+      "wall_sec": 370.2
+    },
+    {
+      "T": 64.0,
+      "bpb_heldout": 2.3431,
+      "ess": 1.655,
+      "n_programs": 49,
+      "abstractions_lifted": 0,
+      "wall_sec": 388.3
+    },
+    {
+      "T": 128.0,
+      "bpb_heldout": 2.3967,
+      "ess": 2.701,
+      "n_programs": 46,
+      "abstractions_lifted": 0,
+      "wall_sec": 371.3
+    },
+    {
+      "T": 256.0,
+      "bpb_heldout": 2.4786,
+      "ess": 3.897,
+      "n_programs": 45,
+      "abstractions_lifted": 0,
+      "wall_sec": 418.1
+    }
+  ],
+  "chosen_T": 64.0,
+  "chosen_bpb": 2.3431,
+  "chosen_ess": 1.655,
+  "chosen_reason": "NO T qualifies for ESS\u226510 (max ESS = 3.90)"
+}

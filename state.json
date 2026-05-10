@@ -1,41 +1,35 @@
 {
-  "version": 20,
-  "stage": "DONE_INTERIM",
-  "iteration": 11,
-  "last_gate": "interim",
+  "version": 22,
+  "stage": "GATE_FAIL_ESCALATE",
+  "iteration": 12,
+  "last_gate": "fail",
   "started_at": "2026-05-06",
+  "last_human_review": "2026-05-10",
   "tokenization": "word",
-  "tokenization_chosen_at": "2026-05-07",
-  "tokenization_results": {
-    "bytes": 2.6744,
-    "bpe4096": 2.8107,
-    "word": 2.2491
+  "v1_completed": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 19, 20],
+  "v1_skipped": [12, 13, 18],
+  "v1_skip_reasons": {
+    "12": "honest gate-fail per held-out methodology fix; mode collapse + cross-domain combine badly",
+    "13": "deferred — multi-version refactor, requires general program representation",
+    "18": "deployment intentionally human-gated; web_endpoint.py skeleton in repo"
   },
-  "v1_trained_baseline_bpb": 2.6209,
-  "v3_trained_bpb": 2.3735,
-  "v4_trained_bpb": 2.4297,
-  "v5_trained_bpb": 2.4297,
-  "v6_streaming_throughput_KBs": 883.8,
-  "v8_4shard_scaling_pct_linear": 80.0,
-  "v11_lambada_per_byte_log2p": -5.17,
-  "v11_hellaswag_accuracy": 0.15,
-  "v11_wikitext103_bpb": 3.4085,
-  "completed_versions": [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 20],
-  "v7_status": "partial — decay+replay mechanism validated (2 abstractions vs V5's 0); full BPB benchmark deferred",
-  "v8_status": "dry-run only; real Modal run deferred to human cost approval",
-  "v10_status": "chat features wired into rce.py (--strict + --explain); calibration dashboard via bench.py ECE breakdown",
-  "v9_v12_v13_v15_v17_v18_v19_status": "deferred per RESULTS.md — code stubs for V8/V14/V16 in repo",
-  "engine_optimizations": [
-    "2026-05-07: NGramPrimitive.predict — removed O(table) backoff scan (~10× faster)",
-    "2026-05-07: V3 added KneserNeyNGram(3,4,5) and SkipGramPredictor(2x3, 3x3)",
-    "2026-05-07: V4 added Gated/Memoized/Mixed combinators",
-    "2026-05-07: V5 wired abstract_phase into bayes_train",
-    "2026-05-07: V7 added Library.decay() and Library.replay() + bench flags"
-  ],
+  "v2_completed": [21],
+  "v2_completed_notes": {
+    "21": "delivered by v1 V10's Toplevel mixture; refusal restored to 1.0/0.99/0.00 on noise/Cyrillic/English"
+  },
+  "v2_in_progress": [22],
+  "v22_status": "GATE_FAIL — escalate. 8 configurations tested (T ∈ {16,32,64,128,256} × max_delta ∈ {None, 0.3}); max ESS=3.9 vs gate ESS≥10. Best: T=64 + max_delta=0.3 → BPB 2.343, ESS 1.66. Coherence gate PASSES. ESCALATE recommendation: defer V22, advance to V23 hierarchical library.",
+  "headline_results": {
+    "v7_trained_bpb_wikitext2": 2.2278,
+    "v9_modal_workers": 32,
+    "v9_merged_programs": 2274,
+    "v11_wikitext103_bpb": 2.194,
+    "v19_mnist_bpb": 0.8632
+  },
   "open_findings": [
-    "V3 broke V1 refusal-rate (KN continuation base ≈ unigram, not uniform).",
-    "V4-V5 mode collapse: posterior fully on kn-5. V7 partial shows decay+replay fixes.",
-    "V11 HellaSwag below random — wiki-trained library picks wiki-like over story-natural. V12 needed.",
-    "Combinators beyond V3's primitives don't help BPB much. V4 BPB was worse than V3."
+    "V22 gate ESS≥10 unreachable with spec mechanisms — requires human decision (lower gate / add inference smoothing / defer)",
+    "Generated text incoherent (locally fluent n-gram fragments) — known, v2.md V25 is the response",
+    "HellaSwag at random — v2.md V23 hierarchical addresses",
+    "V18 web_endpoint deployment requires human auth/rate-limit/content-filter setup"
   ]
 }

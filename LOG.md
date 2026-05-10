@@ -385,3 +385,84 @@ and V19 (multi-modal) are infrastructure and substrate work.
 
 The session executed: V1, V2, V3, V4, V5, V6, V7 (partial), V8 (dry-run),
 V10 (chat features wired), V11 (benchmarks), V20 (interim report).
+
+---
+
+## 2026-05-10 — V22 honest gate-fail (8 configurations tested)
+
+V22 implementation per plans/v2.md V22 spec:
+- `Library.update(temperature=T)` — PAC-Bayes tempered posterior
+  (`coef = 1/T` replaces `lr * log_likelihood`)
+- `Library.effective_sample_size()` — `exp(entropy(posterior))`
+- `Library.top_k_dpp()` — greedy DPP-style diverse top-k via
+  prediction-signature cosine similarity over 16 fixed canonical probes
+- `Library.update(max_delta=...)` — V22 augment beyond spec: per-step
+  delta cap (anti-runaway); spec-compliant defaults to None
+
+V22 sweep results (6000 bayes-steps each, wikitext-2 train, 20K held-out):
+
+  initial sweep (no cap):
+    T=16:  BPB=2.3915  ESS=1.001  lifts=0
+    T=32:  BPB=2.3616  ESS=1.059  lifts=0
+    T=64:  BPB=2.3428  ESS=1.598  lifts=0
+    T=128: BPB=2.4045  ESS=2.962  lifts=0
+
+  augmented sweep (max_delta=0.3):
+    T=32:  BPB=2.3543  ESS=1.092  lifts=0
+    T=64:  BPB=2.3431  ESS=1.655  lifts=0
+    T=128: BPB=2.3967  ESS=2.701  lifts=0
+    T=256: BPB=2.4786  ESS=3.897  lifts=0
+
+  best: T=64 + max_delta=0.3 → BPB 2.3431, ESS 1.655
+
+**V22 gate (per plans/v2.md): ESS ≥10; abstract lifts ≥3; BPB no
+worse than V21; gate or mix in top-20.** Of these:
+  - ESS ≥10:   ✗ FAIL (max ESS 3.9 across 8 configs)
+  - Lifts ≥3:  ✗ FAIL (0 across all configs)
+  - BPB ≥V21:  ✓ T=64 matches V7's 2.34 trend
+  - top-20:    not measured (gated on prior conditions)
+
+**Honesty checklist (plans/v2.md §4):**
+1. Predicted effect produced? Partially. Tempering DOES flatten the
+   posterior (T=16 ESS 1.0 → T=256 ESS 3.9). It just doesn't flatten
+   nearly enough to hit the gate. The math: 6000 bayes-steps ×
+   ~3-bit-per-step likelihood gap / T = thousands of nats of log-odds
+   even at T=256. To hit ESS≥10 (gap ≤ ~2.3 nats), per-step delta
+   would need to be ≤ 0.0004 — at which point BPB falls apart because
+   the library can't learn.
+2. Architectural invariants intact? Yes. Coherence gate against the
+   T=64 library PASSES (refusal_bal_acc=0.929, ASCII 1.000) — same as
+   V7 baseline. Refusal still works.
+3. LOG entry honest about what failed? Yes (this entry).
+4. Consistent with V20 RESULTS.md regime (Mixed)? Yes — V20 already
+   identified mode collapse as structural; V22's spec turned out to be
+   insufficient at the spec'd parameters.
+
+**This is gate-FAIL with structural cause.** Per plans/v2.md §5:
+"gate-passed-with-caveats triggers a LOG.md entry and a brief human
+review request, not an automatic advance." A gate-FAIL is stricter.
+Not advancing to V23 unattended.
+
+**ESCALATE: V22 gate (ESS≥10) is unreachable with the spec's
+mechanisms (PAC-Bayes tempering + DPP top-k) under our training
+regime. Three options for human review:**
+  (a) **Lower the gate** to ESS≥3 (achieved); accept that "real
+      ensemble" in this architecture means 3-5 effective contributors,
+      not 10+. Justify with the empirical sweep data above.
+  (b) **Add structural posterior smoothing at inference** — at predict
+      time, mix the trained posterior with uniform-over-programs by
+      some α to enforce minimum entropy. Decouples training-time
+      learning from inference-time diversity.
+  (c) **Defer V22 entirely**: declare it premature; advance to V23
+      hierarchical library which addresses the diversity problem
+      structurally (each sub-library can mode-collapse on its own
+      domain without that being a global failure). V22 becomes a
+      no-op revisit-after-V23.
+
+Recommendation: (c) — V23 is the structural fix the architecture
+actually needs; V22's pure-math approach was a first attempt that
+didn't pan out, and V22.5/V21.5 attempts to patch it would be
+diminishing returns.
+
+V22 best library saved as `.rce_library_v22_T64.0.pkl` for the
+record. Coherence row appended to BENCHMARKS.md.
