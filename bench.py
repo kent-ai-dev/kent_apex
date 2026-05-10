@@ -159,7 +159,9 @@ def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,
                 abstract_every_grows: int = 5,
                 decay_every_steps: int = 0, decay_factor: float = 0.99,
                 replay_buffer_size: int = 0,
-                replay_every_grows: int = 1, replay_sample: int = 256) -> int:
+                replay_every_grows: int = 1, replay_sample: int = 256,
+                temperature: float | None = None,
+                max_delta: float | None = None) -> int:
     """Run the Bayesian-update + grow + prune + abstract phase.
 
     `abstract_every_grows`: every Nth grow phase, also run
@@ -176,7 +178,7 @@ def bayes_train(lib: Library, train: bytes, ctx_window: int = CTX_WINDOW,
             continue
         ctx = train[max(0, i - ctx_window):i]
         actual = train[i]
-        lib.update(ctx, actual)
+        lib.update(ctx, actual, temperature=temperature, max_delta=max_delta)
         step += 1
 
         # V7: maintain a reservoir-style replay buffer
@@ -232,6 +234,10 @@ def main():
                     help="V7: maintain a reservoir replay buffer of N past (ctx,actual)")
     ap.add_argument("--replay-sample", type=int, default=256,
                     help="V7: sample size from the replay buffer per grow phase")
+    ap.add_argument("--temperature", type=float, default=None,
+                    help="V22: PAC-Bayes tempered posterior. Replaces lr-based "
+                         "update with (1/T) * log_likelihood. Default None preserves "
+                         "the V1-V21 lr=0.03 path. T≈33 reproduces V21 behaviour exactly.")
     ap.add_argument("--metric", choices=["bpb", "ece", "refuse", "all"], default="all")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", action="store_true",
@@ -262,6 +268,7 @@ def main():
                 decay_factor=args.decay_factor,
                 replay_buffer_size=args.replay_buffer,
                 replay_sample=args.replay_sample,
+                temperature=args.temperature,
             )
             print(f"  done: {steps} update steps; |lib|={len(lib.programs)}")
         if args.save:

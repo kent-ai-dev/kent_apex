@@ -52,7 +52,10 @@ class UniformPrimitive(Program):
         self.vocab_size = vocab_size
 
     def predict(self, ctx: bytes) -> Counter:
-        return Counter({b: 1.0 for b in range(self.vocab_size)})
+        # back-compat: pickles saved before vocab_size was a field
+        # (V1-V9) deserialise without the attribute. Default to 256.
+        vs = getattr(self, "vocab_size", 256)
+        return Counter({b: 1.0 for b in range(vs)})
 
 
 class NGramPrimitive(Program):
@@ -370,28 +373,129 @@ class Library:
         # initial log weight = -length (Solomonoff prior, log base 2)
         self.log_weights[p.name] = -p.length * math.log(2)
 
-    def update(self, ctx: bytes, actual: int, lr: float = 0.03):
+    def update(self, ctx: bytes, actual: int, lr: float = 0.03,
+               temperature: float | None = None,
+               max_delta: float | None = None):
         """Bayesian update: programs that predicted `actual` better gain weight.
-        lr < 1 softens the posterior so a few programs don't dominate everything.
 
-        V16: if a provenance.default_store has been initialised, deltas above
-        its threshold are recorded — append-only, per program. Survives
-        program pruning so we always know what shaped the high-weight programs.
+        V22 (when `temperature` is set): replaces the incremental learning-rate
+        heuristic with a PAC-Bayes tempered posterior step. The accumulated
+        log-weight tracks `(1/T) * cumulative_log_likelihood` plus the
+        Solomonoff prior baked in by `add()`. T=1 sharpens the posterior;
+        larger T (higher temperature) flattens it. The `lr` path remains
+        the back-compat default for V1-V21.
+
+        Mathematical equivalence: setting `temperature = 1/lr` reproduces
+        the lr-based behaviour exactly (so `lr=0.03` ≈ `temperature ≈ 33`).
+
+        V16: provenance.default_store records non-trivial deltas if init'd.
         """
         try:
             from provenance import default_store as _prov_store
         except Exception:
             _prov_store = None
 
+        coef = (1.0 / temperature) if temperature is not None else lr
         for p in self.programs:
             dist = p.predict(ctx)
             total = sum(dist.values()) or 1.0
             prob = (dist.get(actual, 0.01) + 1e-9) / total
-            delta = lr * math.log(prob)
+            delta = coef * math.log(prob)
+            # V22 augment: per-step delta cap. Tempering alone can't keep
+            # ESS≥10 in our regime — accumulated log-likelihood gap over
+            # thousands of bayes-steps becomes astronomical. Capping the
+            # per-step magnitude is a structural anti-runaway: no single
+            # update can shift any program's log-weight by more than
+            # `max_delta` nats. Documented in LOG.md as a v2.md V22
+            # extension beyond the spec.
+            if max_delta is not None:
+                if delta > max_delta:
+                    delta = max_delta
+                elif delta < -max_delta:
+                    delta = -max_delta
             self.log_weights[p.name] += delta
             if _prov_store is not None:
                 _prov_store.record(p.name, ctx, delta)
         self._renormalize()
+
+    def effective_sample_size(self) -> float:
+        """V22 ESS = exp(entropy(posterior)). Counts how many programs
+        effectively contribute to predictions. Mode-collapse → ESS ≈ 1.
+        Healthy diverse posterior over an N-program library → ESS up to N.
+        """
+        post = self.posterior()
+        h = 0.0
+        for w in post.values():
+            if w > 1e-12:
+                h -= w * math.log(w)
+        return math.exp(h)
+
+    def top_k_dpp(self, k: int = 8, n_probes: int = 16,
+                  diversity_weight: float = 0.5) -> list:
+        """V22 DPP-style diverse top-k selection. Greedy approximation:
+
+          1. Compute each program's prediction signature on `n_probes` fixed
+             canonical contexts (the same byte sequences used every call so
+             signatures are comparable across calls).
+          2. Pick the highest-posterior-weight program first.
+          3. Iteratively pick the program that maximises
+                 weight(p) * (1 - max_cosine_sim(p, already_picked))
+             — penalising near-duplicate predictors. `diversity_weight`
+             scales the diversity term.
+
+        Falls back to plain top-k if `len(self.programs) < k`.
+        Replaces `top_programs` for diverse-ensemble inference; the original
+        `top_programs` (pure argsort) is kept for comparison.
+        """
+        if len(self.programs) <= k:
+            return self.top_programs(k=k)
+
+        post = self.posterior()
+        # canonical probes — fixed across calls, deterministic
+        probes = [b"the ", b" of ", b" and", b"\n\n", b"\nT", b". I", b" 19",
+                  b" 20", b"a", b" t", b"in ", b" co", b" pr", b"th", b" h",
+                  b"#! "][:n_probes]
+        # build signatures
+        import math as _m
+        sigs: dict[str, list[float]] = {}
+        for p in self.programs:
+            s: list[float] = []
+            for probe in probes:
+                d = p.predict(probe)
+                tot = sum(d.values()) or 1.0
+                # compress 256-dim to 16 bins for cheaper cosine
+                bins = [0.0] * 16
+                for b, v in d.items():
+                    bins[b // 16] += v / tot
+                s.extend(bins)
+            sigs[p.name] = s
+
+        def cos_sim(a: list[float], b: list[float]) -> float:
+            num = sum(x * y for x, y in zip(a, b))
+            da = _m.sqrt(sum(x * x for x in a)) or 1e-9
+            db = _m.sqrt(sum(y * y for y in b)) or 1e-9
+            return num / (da * db)
+
+        # greedy DPP-style selection
+        ranked = sorted(self.programs,
+                        key=lambda p: post.get(p.name, 0.0), reverse=True)
+        if not ranked:
+            return []
+        picked = [ranked[0]]
+        candidates = ranked[1:]
+        while len(picked) < k and candidates:
+            best_score = -1.0
+            best_idx = 0
+            for i, c in enumerate(candidates):
+                w = post.get(c.name, 0.0)
+                max_sim = max(cos_sim(sigs[c.name], sigs[p.name])
+                              for p in picked)
+                score = w * (1.0 - diversity_weight * max_sim)
+                if score > best_score:
+                    best_score = score
+                    best_idx = i
+            picked.append(candidates.pop(best_idx))
+        return picked
 
     def decay(self, factor: float = 0.99):
         """V7: shrink all log-weights toward zero so the posterior stays
