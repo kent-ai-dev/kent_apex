@@ -356,7 +356,95 @@ class Mixed(Program):
         return out
 
 
-COMBINATORS = ["compose", "branch", "abstract", "recur", "gate", "memo", "mix"]
+class Verified(Program):
+    """V26 reasoning combinator: runs N parent programs on the same context.
+    If ≥`threshold` of them agree on the top predicted byte, emit a
+    sharpened distribution over that byte. If they disagree, emit a
+    flat uniform — feeding into V10's Toplevel Bayesian mixture, which
+    will then weight Background higher (cross-program disagreement is
+    itself an OOD signal). Couples Verify to the refusal invariant.
+    """
+    def __init__(self, parents: tuple[Program, ...], threshold: int = 2):
+        if len(parents) < 2:
+            raise ValueError("Verified needs ≥2 parents")
+        threshold = max(2, min(threshold, len(parents)))
+        name = f"verify({','.join(p.name[:10] for p in parents)}|{threshold})"
+        length = sum(p.length for p in parents) + 4.0 + 0.5 * len(parents)
+        super().__init__(name=name, length=length,
+                         parents=tuple(parents), combinator="verify")
+        self.ps = parents
+        self.threshold = threshold
+
+    def predict(self, ctx: bytes) -> Counter:
+        tops: list[int] = []
+        for p in self.ps:
+            d = p.predict(ctx)
+            if not d:
+                continue
+            tops.append(max(d.items(), key=lambda x: x[1])[0])
+        if not tops:
+            return Counter({b: 1.0 for b in range(256)})
+        # find any byte that ≥threshold parents agree on
+        from collections import Counter as _C
+        votes = _C(tops)
+        best_b, best_n = votes.most_common(1)[0]
+        if best_n >= self.threshold:
+            # confident emission: sharp distribution over best_b
+            out = Counter({b: 0.01 for b in range(256)})
+            out[best_b] = 10.0
+            return out
+        # disagreement: return flat distribution. Toplevel mixture sees
+        # this as low information (~uniform) and Background dominates.
+        return Counter({b: 1.0 for b in range(256)})
+
+
+class Searched(Program):
+    """V26 reasoning combinator: beam search over k continuations from
+    parent `p`, scored by likelihood under `scorer`. Returns the
+    distribution at the best-scoring continuation's last position.
+    For look-ahead reasoning without transformer attention.
+
+    Beam is small by default (k=4) — Search is *expensive* and meant
+    to be rare. Latency budget per v2.md V26: ≤5× direct prediction.
+    """
+    def __init__(self, p: Program, scorer: Program, k: int = 4,
+                 horizon: int = 3):
+        name = f"search({p.name[:12]}|k={k},h={horizon})"
+        length = p.length + scorer.length + 6.0
+        super().__init__(name=name, length=length,
+                         parents=(p, scorer), combinator="search")
+        self.p, self.scorer = p, scorer
+        self.k, self.horizon = k, horizon
+
+    def predict(self, ctx: bytes) -> Counter:
+        d0 = self.p.predict(ctx)
+        if not d0:
+            return Counter({b: 1.0 for b in range(256)})
+        # beam: take top-k starting bytes
+        ranked = sorted(d0.items(), key=lambda x: -x[1])[:self.k]
+        best_score = float("-inf")
+        best_dist: Counter | None = None
+        import math as _m
+        for first_b, _w in ranked:
+            cur = bytearray(ctx)
+            cur.append(first_b)
+            score = 0.0
+            for _ in range(self.horizon - 1):
+                sd = self.scorer.predict(bytes(cur))
+                stot = sum(sd.values()) or 1.0
+                top_b = max(sd.items(), key=lambda x: x[1])[0]
+                score += _m.log(max(sd.get(top_b, 1e-9) / stot, 1e-12))
+                cur.append(top_b)
+            # final distribution at this beam's last position
+            final_d = self.scorer.predict(bytes(cur))
+            if score > best_score:
+                best_score = score
+                best_dist = final_d
+        return best_dist or d0
+
+
+COMBINATORS = ["compose", "branch", "abstract", "recur", "gate", "memo",
+               "mix", "verify"]
 
 
 # ---------- The Library ----------
@@ -589,6 +677,11 @@ class Library:
                     n_ps = random.randint(3, min(5, len(parents)))
                     ps = tuple(random.sample(parents, n_ps))
                     child = Mixed(ps)
+                elif combinator == "verify":
+                    n_ps = random.randint(3, min(5, len(parents)))
+                    ps = tuple(random.sample(parents, n_ps))
+                    threshold = max(2, n_ps // 2 + 1)  # simple majority
+                    child = Verified(ps, threshold=threshold)
                 else:
                     continue
             except Exception:

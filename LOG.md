@@ -466,3 +466,168 @@ diminishing returns.
 
 V22 best library saved as `.rce_library_v22_T64.0.pkl` for the
 record. Coherence row appended to BENCHMARKS.md.
+
+---
+
+## 2026-05-11 — V22 deferred per ESCALATE recommendation; V23 PROPOSAL
+
+**V22 → deferred.** Per the ESCALATE recommendation in the prior entry,
+V22 is deferred. The empirical sweep (8 configurations) established
+that the spec's mechanisms (PAC-Bayes tempering + DPP top-k) cannot
+reach the ESS≥10 gate under our training regime. Three options were
+on the table; option (c) — defer V22, advance to V23 — wins because:
+
+  - V23's HierarchicalLibrary makes posterior diversity *structural*
+    (each sub-library is small and can sustain its own posterior;
+    mode collapse within one sub-library is acceptable as long as
+    the router activates diverse sub-libraries on diverse inputs)
+  - Option (a) "lower the gate" is intellectually unsatisfying without
+    a new structural rationale for the lower number
+  - Option (b) "inference-time posterior smoothing" satisfies the
+    metric superficially without making the architecture actually
+    diverse — measurement-hacking rather than capability gain
+
+V22's tempered-posterior and DPP-top-k code stays in `engine.py` for
+future use; they're not wrong, just insufficient on their own.
+
+---
+
+## 2026-05-11 — V23 PROPOSAL (REQUIRES HUMAN APPROVAL)
+
+Per v1.md §0 and plans/v2.md V23 explicitly: storage migrations and
+major architectural changes require a PROPOSAL block + human approval
+before implementation. This is that block.
+
+**Proposed change**: HierarchicalLibrary replaces flat Library. Routes
+predictions by context signature into specialist sub-libraries.
+
+```
+HierarchicalLibrary = {
+    router:        small Program that emits sub-library id from ctx
+    sub_libraries: dict[id → Library]
+    cross_borrow:  set[Program]     # programs shared across subs
+}
+```
+
+**Storage migration scope** (per plans/storage.md Tier-2):
+  - **FoundationDB or TiKV** replaces LMDB for weights + output cache
+  - **Redis** as hot tier for the most-requested ~10M (program_id, ctx) pairs
+  - **Marisa-trie** for n-gram primitives once billion-n-gram threshold crossed
+  - **Stratified Bayesian updates** (top 0.1% every byte, top 1% every
+    10 bytes, etc.) — required because hierarchical routing means each
+    sub-library gets fewer effective updates per byte
+
+**Cost estimate** (operator review please):
+  - FoundationDB cluster: ~$200/mo (c7i-4xlarge equivalent + 3 nodes)
+    OR TiKV: ~$100/mo (smaller operational footprint)
+  - Redis hot tier (100GB managed): ~$150/mo
+  - NVMe storage budget: ~$50/mo
+  - Modal training spend (unchanged from V8/V9): ~$5-50 per V23 retrain
+  - **Total ongoing: ~$300-500/mo** for the cluster while V23 is being
+    developed and benchmarked
+  - One-time engineering cost: substantial — 1-2 weeks of focused
+    cluster setup + migration scripts + validation
+
+**Required dependencies** before implementing:
+  1. Operator chooses FDB vs TiKV (FDB has stronger cross-shard
+     transactions; TiKV has easier ops). Default recommendation: TiKV
+     for kent_apex scale (we're not at billion-row regime yet).
+  2. Operator approves the monthly cluster spend
+  3. Document the migration rollback path in `plans/storage.md`
+
+**Alternative path if V23 is deemed too expensive right now**: skip
+V23, run V24/V26 against the flat-library architecture, accept lower
+performance on cross-domain (V12-style failures persist), revisit V23
+when V20-era results justify the cluster cost.
+
+**Recommendation**: defer V23 until we have V24 numbers in. V24
+(compositional benchmarks — running now) tells us whether the
+architecture wins where it should win cleanly. If V24 establishes a
+publishable SCAN/COGS/OOD-arithmetic result, V23's $500/mo is justified
+to push that further. If V24 doesn't win, V23 is premature.
+
+**Status: AWAITING HUMAN APPROVAL.** Not implementing until operator
+explicitly green-lights cluster spend AND picks FDB/TiKV.
+
+---
+
+## 2026-05-11 — V24 in flight (SCAN compositional generalisation)
+
+V24 runs without V23 prereq. Built `eval_scan.py`:
+  - Fetched canonical SCAN data from brendenlake/SCAN GitHub
+    (HF has no SCAN mirror — `validate_dataset.py` correctly FAILed
+    on all attempted paths)
+  - Length split: 16990 train, 3920 test (the classic
+    short→long extrapolation test where transformers collapse)
+  - addprim-jump split: 14670 train, 7706 test
+  - Trains library on SCAN train byte stream using V22's best params
+    (T=64, max_delta=0.3, decay+replay)
+  - Eval: byte-level log P(gold_target | input) vs K shuffled-action
+    distractors. Rank-1 accuracy = % where gold beats all distractors.
+  - This is NOT canonical exact-match accuracy (which requires
+    coherent generation, broken per V20). It's a calibration metric:
+    "does the library assign higher probability to the right action
+    sequence than to scrambled versions?"
+
+Currently training on 150KB of SCAN length-split train + evaluating
+on 100 test examples × 4 distractors each. Expecting ~10-15 min wall.
+
+---
+
+## 2026-05-13 — V24 SCAN honest gate-FAIL (anti-correlated)
+
+V24 trained on SCAN length-split (150KB train, 100 test examples ×
+4 shuffled-action distractors each):
+
+  rank1_accuracy        : 0.05  ← gold beats all 4 distractors only 5% of the time
+  random_baseline_rank1 : 0.20  ← 1/5 because gold competes against 4 distractors
+  mean_gold_log2p/byte  : -0.30 ← library learned SCAN byte distribution well
+  uniform_baseline      : -8.0  ← 28× better than uniform on byte-prob alone
+
+**The library is ANTI-CORRELATED with correctness on SCAN**, identical
+shape to V11's HellaSwag-below-random finding from V20. The architecture
+learns surface byte statistics (high-frequency action tokens like
+`I_TURN_RIGHT`) so well at this scale that it prefers byte-frequency
+plausibility over compositional correctness. Two independent failure
+modes (HellaSwag + SCAN) confirm: a flat byte-n-gram-style library
+*cannot* solve composition because its inductive bias is "what byte
+sequences appeared often," not "what mapping rule was applied."
+
+**Honesty checklist (plans/v2.md §4):**
+1. Predicted effect? Partially. The library DID learn SCAN syntax
+   strongly (28× over uniform). It didn't learn the compositional
+   mapping. The gate's "rank-1 accuracy ≥ random baseline" was the
+   minimum bar for "learned anything compositional"; we don't clear it.
+2. Architectural invariants? Refusal still works (coherence gate PASS:
+   refusal_bal_acc 0.929, ASCII printable 0.924). Slight ASCII degradation
+   from 1.000 to 0.924 because the SCAN library learned byte-distribution
+   features that emit non-ASCII at English-prompt OOD (the "garbled
+   binary" output on English prompts).
+3. LOG entry honest about what failed? Yes (this entry).
+4. Consistent with V20 RESULTS.md Mixed regime? Yes — V20 explicitly
+   predicted this for compositional benchmarks. v2.md V25
+   (LLM-as-primitive hybrid) is the response.
+
+**Sample generation outputs across libraries** (the user asked
+"are any of these coherent?"):
+  V7  wikitext   "The cat sat on" → "the gold dollar would repeated the 2008"
+  V12 cross-dom  "def factorial(n):" → " # , pyed):"
+  V15 oasst1     "The cat sat on" → "the employer in lower over the ability"
+  V22 T=64       "She walked into the room and" → " blockade ores are usually interview"
+  V24 SCAN       "She walked into the room and" → " run left OUT: I_TURN_RIGHT..."
+  V24 SCAN       "The quick brown fox" → "�¸�\\x03�\\\\�\\x1b�x..." (garbled)
+
+**No library produces coherent multi-sentence text.** All are locally-
+fluent byte-n-gram output with no longer-range structure. This is
+the empirical finding V25 was designed to address: a small LLM lives
+in the library as ONE Program, weighted Bayesianly, generates fluent
+text while the symbolic architecture handles refusal + audit trail.
+
+**Advance plan:**
+  V24 SCAN: gate FAIL (rank-1 0.05 < 0.20 random). Logged.
+  V24 should also try COGS and OOD-arithmetic per the spec — both
+  measure compositional generalisation by different routes.
+  Skipping COGS/arithmetic in this iteration to advance to V25,
+  which the cumulative V11+V24 evidence makes the priority.
+
+V24 SCAN library saved as `.rce_library_v24_scan_length.pkl`.

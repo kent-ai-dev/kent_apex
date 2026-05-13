@@ -63,3 +63,4 @@ Append-only ledger of every metric measured across versions.
 | 2026-05-09 | V12 baseline coherence | balanced_acc | 1.0000 | cross-domain | refusal 1.000, ASCII 1.000, wordlist 0.375; library=.rce_library_v12.pkl; gate=PASS |
 | 2026-05-09 | V15 baseline coherence | balanced_acc | 1.0000 | oasst1 | refusal 1.000, ASCII 1.000, wordlist 0.232; library=.rce_library_v15.pkl; gate=PASS |
 | 2026-05-10 | V22-attempt coherence | balanced_acc | 0.9286 | wikitext-2-T64-cap0.3 | refusal 0.929, ASCII 1.000, wordlist 0.457; library=.rce_library_v22_T64.0.pkl; gate=PASS |
+| 2026-05-13 | V24 coherence | balanced_acc | 0.9286 | SCAN-length | refusal 0.929, ASCII 0.924, wordlist 0.094; library=.rce_library_v24_scan_length.pkl; gate=PASS |
