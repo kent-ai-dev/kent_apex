@@ -447,6 +447,178 @@ COMBINATORS = ["compose", "branch", "abstract", "recur", "gate", "memo",
                "mix", "verify"]
 
 
+class LLMPrimitive(Program):
+    """V25 — the one authorised neural intrusion (per plans/v2.md §3 V25).
+
+    A small local language model exposed as one Program in the library.
+    Receives a context (bytes), returns a byte distribution. Its weight
+    is updated by the standard Bayesian rule; if the LLM consistently
+    predicts well, it dominates; if not, it gets pruned. Refusal still
+    comes from V10's Toplevel mixture — the LLM is *one voice in the
+    choir, not the conductor* (per spec).
+
+    Constraints (these justify the §0 prohibition exception):
+      - local inference only; no remote API calls
+      - small model (default gpt2 = 124M); document the choice
+      - deterministic top-k truncation for inspectability
+      - cache by context-tail for repeated lookups (LRU bounded)
+
+    Lazy initialisation: the heavyweight model isn't loaded until the
+    first predict() call, so import of engine.py stays cheap.
+    """
+    def __init__(self, model_name: str = "gpt2",
+                 ctx_window: int = 64, top_k: int = 64,
+                 cache_size: int = 1024,
+                 length: float = 8.0):
+        # Solomonoff prior is -length*ln2. A 124M-param transformer has
+        # an astronomical Kolmogorov complexity in theory, but in
+        # practice the *interface* it presents to the library is a
+        # single predict(ctx) function — same as any primitive. Length
+        # here is the description length of "use the LLM at this URL",
+        # not the model weights themselves. Default 8.0 matches the
+        # other primitives so the LLM can win on likelihood, not lose
+        # by prior. Configurable for ablations.
+        super().__init__(name=f"llm({model_name})", length=length)
+        self.model_name = model_name
+        self.ctx_window = ctx_window
+        self.top_k = top_k
+        self.cache_size = cache_size
+        self._cache: dict = {}
+        self._cache_order: list = []
+        self._model = None
+        self._tokenizer = None
+
+    def _ensure_loaded(self):
+        if self._model is not None:
+            return
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self._model = AutoModelForCausalLM.from_pretrained(self.model_name)
+        self._model.eval()
+        self._torch = torch
+
+    def predict(self, ctx: bytes) -> Counter:
+        # cache check first (cheap)
+        key = ctx[-self.ctx_window:] if ctx else b""
+        if key in self._cache:
+            return self._cache[key]
+        self._ensure_loaded()
+
+        torch = self._torch
+        # decode bytes → string for tokenizer; fall back gracefully on
+        # invalid UTF-8 (which is common in byte-level training)
+        text = key.decode("utf-8", errors="replace") if key else ""
+        if not text:
+            # nothing to condition on — return a softened uniform
+            return Counter({b: 1.0 for b in range(256)})
+
+        with torch.no_grad():
+            enc = self._tokenizer(text, return_tensors="pt",
+                                   truncation=True, max_length=512)
+            out = self._model(**enc)
+            logits = out.logits[0, -1, :]   # last-position distribution
+            # top-k for inspectability
+            top = torch.topk(logits, k=min(self.top_k, logits.shape[-1]))
+            top_tokens = top.indices.tolist()
+            top_probs = torch.softmax(top.values, dim=-1).tolist()
+
+        # marginalise tokens → bytes. each token's text is decoded; the
+        # FIRST byte of each token gets that token's probability mass.
+        # This is approximate but consistent across the library (every
+        # other program also emits byte-level distributions).
+        byte_dist: dict[int, float] = {b: 1e-6 for b in range(256)}
+        for tok_id, p in zip(top_tokens, top_probs):
+            try:
+                tok_str = self._tokenizer.decode([tok_id])
+                tok_bytes = tok_str.encode("utf-8", errors="replace")
+                if tok_bytes:
+                    byte_dist[tok_bytes[0]] = byte_dist.get(tok_bytes[0], 0.0) + p
+            except Exception:
+                continue
+        result = Counter(byte_dist)
+
+        # LRU insert
+        self._cache[key] = result
+        self._cache_order.append(key)
+        if len(self._cache_order) > self.cache_size:
+            old = self._cache_order.pop(0)
+            self._cache.pop(old, None)
+        return result
+
+    def __getstate__(self):
+        # don't pickle the model — re-load on demand after unpickling
+        st = self.__dict__.copy()
+        st["_model"] = None
+        st["_tokenizer"] = None
+        st["_torch"] = None
+        st["_cache"] = {}
+        st["_cache_order"] = []
+        return st
+
+
+class BlendedInference:
+    """V25 finding workaround: the Bayesian competition under-weights the
+    LLMPrimitive because byte-level n-gram-1 wins per-byte likelihood at
+    our train scale. The architecture doesn't grant the LLM enough
+    posterior weight to influence generation.
+
+    BlendedInference is an *inference-time* hybrid that mixes the
+    Bayesian library's predict() with an explicit LLM's predict() at a
+    fixed blend ratio α. This is NOT a Bayesian update — it's an
+    engineered generation path. Refusal, compression, and audit trail
+    still come from the underlying Bayesian library (the LLM is bypassed
+    for those). Generation goes through the blend.
+
+    Audit trail per call: the byte distribution is `α * LLM_dist + (1-α)
+    * library_dist`, both inspectable. The LLM's contribution is bounded
+    and reportable; the symbolic library still constrains outputs.
+
+    Use case: making the architecture *generate* coherent text after
+    V20+V25's gate-fail honest finding that the Bayesian competition
+    doesn't surface the LLM. The product positioning stays "calibrated
+    refusal" (Toplevel) — this is for when generation actually matters
+    (V18 endpoint, V30 narrow-domain).
+    """
+    def __init__(self, library, llm: "LLMPrimitive", alpha: float = 0.5,
+                 vocab_size: int = 256):
+        self.library = library
+        self.llm = llm
+        self.alpha = alpha
+        self.vocab_size = vocab_size
+
+    @property
+    def programs(self):
+        # surface what's behind us so inspection tools work
+        return list(self.library.programs) + [self.llm]
+
+    def predict(self, ctx: bytes) -> Counter:
+        lib_d = self.library.predict(ctx)
+        llm_d = self.llm.predict(ctx)
+        lib_tot = sum(lib_d.values()) or 1.0
+        llm_tot = sum(llm_d.values()) or 1.0
+        out = Counter()
+        for b in range(self.vocab_size):
+            out[b] = (self.alpha * (llm_d.get(b, 0.0) / llm_tot)
+                      + (1.0 - self.alpha) * (lib_d.get(b, 0.0) / lib_tot))
+        return out
+
+    def entropy(self, ctx: bytes) -> float:
+        d = self.predict(ctx)
+        tot = sum(d.values()) or 1.0
+        import math as _m
+        h = 0.0
+        for v in d.values():
+            p = v / tot
+            if p > 0:
+                h -= p * _m.log2(p)
+        return h
+
+    def refusal_score(self, ctx: bytes) -> float:
+        # delegate refusal to underlying Toplevel if present
+        return getattr(self.library, "refusal_score", lambda c: 0.0)(ctx)
+
+
 # ---------- The Library ----------
 
 @dataclass

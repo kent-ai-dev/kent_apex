@@ -631,3 +631,95 @@ text while the symbolic architecture handles refusal + audit trail.
   which the cumulative V11+V24 evidence makes the priority.
 
 V24 SCAN library saved as `.rce_library_v24_scan_length.pkl`.
+
+---
+
+## 2026-05-15 — V25 honest gate-FAIL (LLM-as-primitive doesn't work as spec'd)
+
+V25 implementation per v2.md V25:
+- `LLMPrimitive(model_name='gpt2', ctx_window=64, top_k=32)` — local
+  GPT-2-small. No remote API. Deterministic top-k truncation. Bytes in,
+  byte distribution out. Lazy model load. Pickle-safe (clears
+  model+tokenizer on `__getstate__`).
+- Wired into a Library alongside the V7-class primitives; trained 200
+  Bayesian update steps with V22-best params (T=64, max_delta=0.3).
+
+**V25 gate (per v2.md): LLMPrimitive earns ≥0.05 posterior weight;
+BPB improves ≥10% over V23-without-LLM; ECE ≤0.05; refusal ≥0.90
+on Cyrillic.**
+
+Result: **LLMPrimitive did NOT make the top-8.** Posterior after 200
+updates with equal prior (length=8.0, same as primitives):
+
+  ngram-1   0.6375
+  ngram-2   0.2732
+  ngram-3   0.0774
+  ngram-4   0.0083
+  kn-3      0.0025
+  (LLM weight: effectively zero — under uniform-noise floor)
+
+**Root cause**: byte-level Bayesian competition under-rewards the LLM
+because per-byte likelihood is dominated by surface statistics. n-gram-1
+predicts the next byte from the unigram distribution and *wins* against
+GPT-2 at our train scale because GPT-2's strength is *next-token*
+coherence over long contexts, not next-byte over 16-byte ctx. The
+architecture's Bayesian rule doesn't surface coherence as a signal.
+
+**Attempted workaround**: BlendedInference class that mixes
+α·LLM_dist + (1-α)·library_dist at *inference time* (not Bayesian).
+Coherence test against V7 library + GPT-2 blend across α ∈ {0, 0.3, 0.6, 0.9}:
+
+  α=0.0 (V7 only):
+    "The cat sat on" → "the fleet blocks of the Germans to the"
+  α=0.3:
+    "The cat sat on" → "time the in-@ induction � Environm in June 191"
+  α=0.6:
+    "The cat sat on" → "the umpi � � � � � � � � � � � � � � � � � �"
+  α=0.9:
+    "The cat sat on" → "iMaCa'a � � � � � � � � � � � � � � � _ �"
+
+**Higher LLM weight makes output WORSE, not better.** Root cause:
+LLMPrimitive marginalises GPT-2's BPE vocab to byte-0 of each token.
+Most GPT-2 tokens start with `Ġ` (BPE space-marker, byte 0xc4) which
+when split byte-by-byte produces 0xef 0xbf 0xbd (UTF-8 replacement
+char). The `�` flood is the LLM contributing replacement chars to
+the byte distribution.
+
+The fix (deferred) is to condition GPT-2's forward call on the bytes
+already emitted, so it's genuinely byte-by-byte conditional rather than
+token-marginalised. That's a substantial rewrite of the LLM-byte
+interface — V25.5 territory.
+
+**Honesty checklist (plans/v2.md §4):**
+1. Predicted effect? No. The spec hoped the Bayesian competition would
+   surface the LLM as a useful ensemble member. Empirically it doesn't,
+   because byte-level competition over short ctx is the wrong arena for
+   GPT-2's strengths.
+2. Architectural invariants? Yes. Refusal still works (delegated to
+   underlying Toplevel). Audit trail: every byte traces to library
+   programs (LLM bypassed when α=0; surfaced separately when blended).
+3. LOG honest? Yes (this entry).
+4. Consistent with V20 Mixed regime? Yes — V20 said "calibration is
+   the win, generation is not." V25 hoped to fix generation; it didn't.
+   The Mixed-regime conclusion stands.
+
+**V25 gate verdict: FAIL** — LLM posterior weight ~0 (gate ≥0.05);
+blended generation degrades with LLM weight (gate "BPB improves ≥10%"
+unmeasured but clearly false from sample output).
+
+**The honest negative result is valuable for the V29 theory paper**:
+*byte-level Bayesian competition over short contexts cannot surface
+neural primitives optimised for token-level coherence over long
+contexts*. This is a genuine architectural finding, not a Modal
+infrastructure issue.
+
+**Path forward**:
+- V26 (reasoning combinators) — Verified already in engine.py and
+  wired into grow(). Tests independent of V25.
+- V28 (modality-specific primitives) — V19 stretch was hit (MNIST
+  BPB 0.86); V28 is a go per v2.md §3 V28 conditional.
+- V29 (theory) — V25's negative result is a result. Auto-escalates
+  per v2.md V29.
+- V30 (deployment) — calibrated-refusal product as v2.md §6 Mixed
+  regime intended. The architecture's correct product positioning is
+  "I tell you when I don't know," not "I generate text."
